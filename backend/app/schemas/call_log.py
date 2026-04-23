@@ -44,6 +44,21 @@ class BulkRetryResponse(BaseModel):
     new_log_ids: list[int]
 
 
+class IngestRequest(BaseModel):
+    """Payload from external systems reporting their own external-call result."""
+
+    interface_id: int
+    status: CallStatus
+    duration_ms: int = Field(..., ge=0)
+    http_status: int | None = None
+    request: dict[str, Any] | None = None
+    response: dict[str, Any] | None = None
+    error_message: str | None = None
+    error_type: str | None = None
+    error_trace: str | None = None
+    called_at: datetime | None = None
+
+
 class CallLogStats(BaseModel):
     total: int
     success: int

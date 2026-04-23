@@ -20,6 +20,7 @@ from datetime import timedelta
 from sqlalchemy import delete
 
 from app.core.database import SessionLocal, init_db
+from app.core.security import encrypt_secret
 from app.core.time import now_kst
 from app.models import CallLog, Incident, Interface, SlaTarget
 from app.models.call_log import CallStatus
@@ -144,14 +145,19 @@ SEED_INTERFACES: list[dict] = [
     {
         "name": "보험개발원-차량시세-MQ",
         "organization": "보험개발원 (KIDI)",
-        "description": "차량 시세 산출 결과 비동기 수신",
+        "description": "차량 시세 산출 결과 비동기 수신 (Redis 큐 시뮬)",
         "protocol": ProtocolType.MQ,
-        "endpoint": "tcp://kidi-mq.example.com:1414/QM.KIDI/CARMARKET.OUT",
+        "endpoint": "redis://redis:6379/0/CARMARKET.OUT",
         "method": "GET",
         "schedule_cron": None,
         "auth_type": AuthType.NONE,
         "rps": 1.2, "fail_rate": 0.01, "latency_ms": (90, 30),
         "sla": (99.0, 500),
+        "request_template": {
+            "queue": "CARMARKET.OUT",
+            "consumer_group": "noahub-cg-01",
+            "block_ms": 500,
+        },
     },
     {
         "name": "보험개발원-일일보험료정산-Batch",
@@ -189,6 +195,46 @@ SEED_INTERFACES: list[dict] = [
             "result_dir": "/sftp/processed",
             "remote_host": "batch.kftc.or.kr",
             "filename_pattern": "ADR_*.csv",
+        },
+    },
+    {
+        "name": "마이데이터-야간배치파일-SFTP",
+        "organization": "한국신용정보원 마이데이터",
+        "description": "야간 정산 결과 파일 디렉터리 조회 (실 SFTP)",
+        "protocol": ProtocolType.FTP,
+        "endpoint": "sftp://sftp:22/upload",
+        "method": "GET",
+        "schedule_cron": "0 3 * * *",   # 매일 03:00 KST
+        "auth_type": AuthType.BASIC,
+        "auth_secret_plain": "noahub:noahub_pw",
+        "rps": 0.0014, "fail_rate": 0.02, "latency_ms": (350, 90),
+        "sla": (99.0, 1500),
+        "request_template": {
+            "host": "sftp",
+            "port": 22,
+            "path": "/upload",
+            "operation": "LIST",
+        },
+    },
+    {
+        "name": "보험개발원-SLA리포트업로드-SFTP",
+        "organization": "보험개발원 (KIDI)",
+        "description": "월간 SLA 리포트 파일 업로드 (실 SFTP)",
+        "protocol": ProtocolType.FTP,
+        "endpoint": "sftp://sftp:22/upload",
+        "method": "POST",
+        "schedule_cron": "0 9 1 * *",   # 매월 1일 09:00 KST
+        "auth_type": AuthType.BASIC,
+        "auth_secret_plain": "noahub:noahub_pw",
+        "rps": 0.00014, "fail_rate": 0.01, "latency_ms": (520, 120),
+        "sla": (99.5, 2000),
+        "request_template": {
+            "host": "sftp",
+            "port": 22,
+            "path": "/upload",
+            "operation": "PUT",
+            "filename": "sla_report_latest.csv",
+            "content": "interface,uptime,p95\nKIDI-실손,98.66,194\n",
         },
     },
 ]
@@ -548,6 +594,36 @@ def _generate_logs(itf: Interface, profile: dict, db) -> int:
     return len(rows)
 
 
+def _seed_mq_messages() -> int:
+    """Push demo messages to Redis LISTs so MQ interfaces have something to pop."""
+    try:
+        from redis import Redis  # type: ignore
+    except ImportError:
+        return 0
+    from app.core.config import get_settings as _get
+    client = Redis.from_url(_get().redis_url, decode_responses=True)
+    pushed = 0
+    # CARMARKET.OUT — 차량 시세 산출 결과
+    client.delete("CARMARKET.OUT")
+    for _ in range(40):
+        msg = {
+            "model": random.choice(["현대 그랜저 IG", "기아 K5", "BMW 520i", "벤츠 E300", "쏘나타 DN8", "아반떼 CN7"]),
+            "year": random.randint(2018, 2025),
+            "estimated_won": random.randint(15_000_000, 75_000_000),
+            "vin_hash": _hash_pii("vin-"),
+            "trace_id": _trace_id(),
+            "produced_at": NOW.isoformat(),
+        }
+        client.rpush("CARMARKET.OUT", _json_dumps(msg))
+        pushed += 1
+    return pushed
+
+
+def _json_dumps(obj) -> str:
+    import json as _j
+    return _j.dumps(obj, ensure_ascii=False)
+
+
 def main() -> None:
     init_db()
     db = SessionLocal()
@@ -571,6 +647,7 @@ def main() -> None:
                 schedule_cron=spec["schedule_cron"],
                 auth_type=spec["auth_type"],
                 request_template=spec.get("request_template"),
+                auth_secret=encrypt_secret(spec["auth_secret_plain"]) if spec.get("auth_secret_plain") else None,
                 enabled=True,
             )
             db.add(itf)
@@ -608,6 +685,9 @@ def main() -> None:
             )
         db.commit()
         print(f"✓ {len(SEED_INCIDENTS)} resolved incidents (RAG seed)")
+
+        n_mq = _seed_mq_messages()
+        print(f"✓ {n_mq} MQ messages queued to Redis (CARMARKET.OUT)")
 
         print("\n시드 완료. http://localhost:5173 에서 새로고침해서 확인하세요.")
     finally:

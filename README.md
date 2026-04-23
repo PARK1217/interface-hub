@@ -1,35 +1,51 @@
 # NOA Interface Hub
 
-> 보험사 외부 인터페이스를 한 곳에서 **등록 · 실행 · 감시 · 분석**하는 통합 관제 플랫폼.
+> 보험사 외부 인터페이스를 한 곳에서 **등록 · 실행 · 감시 · 재처리 · 분석**하는 통합 관제 플랫폼.
 > 노아에이티에스(주) 공채 15기 2차 — 박수산.
 
-흩어진 REST/SOAP/FTP/MQ 연동을 하나의 UI 로 모으고, 실시간 모니터링과 AI(RAG) 기반 장애 분석으로 운영자 부담을 줄이는 것이 목표입니다.
+흩어진 REST/SOAP/MQ/Batch/SFTP 연동을 하나의 UI 로 모으고, 실시간 모니터링·자동 장애 감지·운영자 재처리·AI(RAG) 기반 원인 분석까지 한 화면에서 처리합니다.
 
 ---
 
 ## 핵심 기능
 
-| 구분 | 기능 | Phase |
+| 구분 | 기능 | 상태 |
 |---|---|---|
-| F1 | 인터페이스 등록·실행 (REST/SOAP/FTP/MQ, Cron, AES-GCM 시크릿) | 1 |
-| F2 | 실시간 모니터링 (WebSocket 라이브 + ApexCharts) | 1 |
-| F3 | 장애 자동 감지·분류 (Timeout/Auth/Format/5xx, Slack+Email) | 2 |
-| F4 | 로그 검색 · SLA 리포트 | 2 |
-| F5 | ML 이상 탐지 (Isolation Forest) + RAG 챗봇 (LangChain · FAISS) | 3 |
+| F1 | 인터페이스 등록·실행 (REST / SOAP / MQ / Batch / SFTP, Cron, AES-GCM 시크릿) | ✅ |
+| F2 | 실시간 모니터링 (WebSocket 라이브 + ApexCharts 시계열·히트맵) | ✅ |
+| F3 | 장애 자동 감지·분류 (Timeout/Auth/Format/5xx) + Slack·Email 알림 | ✅ |
+| F4 | 로그 검색 + 재처리 (단건 ↻ / 일괄 / lineage 체인) + 상세 다이얼로그 | ✅ |
+| F5 | 성능 관리 (p50/p95/p99 백분위, TPS, Slow Top 10) | ✅ |
+| F6 | SLA 리포트 (가동률 / 응답시간 vs 목표) | ✅ |
+| F7 | AI 분석 — RAG (LangChain + FAISS) 또는 Fallback (TF-IDF) 자동 분기 | ✅ |
+| F8 | Ingest API — 외부 시스템이 자기 호출 결과를 보고하는 통로 | ✅ |
+
+## 5종 프로토콜 어댑터
+
+| 프로토콜 | 동작 | 비고 |
+|---|---|---|
+| **REST** | ✅ 실호출 (httpx) | 4xx/5xx 자동 분류 |
+| **SOAP** | ✅ 실호출 (httpx + XML body) | WSDL 파싱은 추후 |
+| **SFTP/FTP** | ✅ 실호출 (paramiko, atmoz/sftp 컨테이너) | LIST · GET · PUT 3종 op |
+| **Batch** | ✅ 시뮬 (파일 픽업 → 처리 → 결과 업로드) | records/errors/duration 반환 |
+| **MQ** | ✅ Redis LIST 시뮬 (BLPOP) | 시드에서 40개 메시지 prepopulate |
 
 ## 아키텍처
 
 ```
-┌──────────────┐  HTTPS / WS   ┌──────────────────────┐  HTTP   ┌──────────────┐
-│ Vue 3 + Vite │ ◀───────────▶ │ FastAPI (Python 3.12) │ ◀────▶ │ 외부 기관 API │
-│ Vuetify 3    │               │  · CRUD / Scheduler   │         └──────────────┘
-│ ApexCharts   │               │  · WebSocket / RAG    │
-└──────────────┘               └─────────┬─────────────┘
-                                         │
-                            ┌────────────┴────────────┐
-                            │                         │
-                     PostgreSQL 15               Redis 7  (queue/cache)
-                       (5 tables)               FAISS index (disk)
+┌──────────────┐  HTTP/WS    ┌──────────────────────┐  REST/SOAP   ┌──────────────┐
+│ Vue 3 + Vite │ ◀─────────▶ │ FastAPI (Python 3.12) │ ◀─────────▶ │ 외부 기관 API │
+│ Vuetify 3    │             │  · CRUD / Scheduler   │  SFTP/MQ    │ KIDI·KCIS·   │
+│ ApexCharts   │             │  · WebSocket Live     │             │ 심평원·KFTC  │
+└──────────────┘             │  · Detector·Notifier  │             └──────────────┘
+                             │  · RAG (LLM/Fallback) │
+                             └─────────┬─────────────┘
+                                       │
+                          ┌────────────┴────────────┬─────────────┐
+                          │                         │             │
+                  PostgreSQL 15               Redis 7        atmoz/sftp
+                  (5 핵심 테이블)               (MQ 큐)        (SFTP 서버)
+                                                              FAISS index (디스크)
 ```
 
 5개 핵심 테이블: `interfaces` · `call_logs` · `incidents` · `sla_targets` · `vector_cases`.
@@ -39,71 +55,96 @@
 ```bash
 # 1) 환경 변수 준비
 cp backend/.env.example backend/.env
-# (선택) AI 사용 시 OPENAI_API_KEY, Slack/SMTP 값 채우기
+# (선택) AI 사용 시 OPENAI_API_KEY, Slack/SMTP 값 채우기 — 안 채워도 fallback 모드로 동작
 
-# 2) 전체 스택 기동
+# 2) 전체 스택 기동 (postgres / redis / sftp / backend / frontend)
 docker compose up --build
 
-# 3) 접속
+# 3) 시드 데이터 적재 — 처음 한 번
+docker compose exec backend python -m app.scripts.seed_demo
+# → 14 인터페이스 + ~12k 호출로그 + 장애 6건 + Redis 큐 40개 메시지
+
+# 4) 접속
 #   · Frontend  http://localhost:5173
 #   · Backend   http://localhost:8000/docs   (Swagger)
 #   · Health    http://localhost:8000/health
 ```
 
-## 로컬 개발 (Docker 없이)
+## 페이지 구성 (사이드바)
+
+| 메뉴 | 내용 |
+|---|---|
+| 대시보드 | KPI 4종 + 호출량/응답시간 6시간 차트 + LIVE 피드 + **시간대×인터페이스 히트맵** |
+| 인터페이스 | 14건 CRUD + ▶ 즉시 실행 + 프로토콜·기관·활성 필터 |
+| 호출 로그 | 12k+ 검색 (상태/프로토콜/키워드/실패만) + ↻ 단건/일괄 재처리 + **👁 상세 다이얼로그** + 🌿 lineage 체인 |
+| 장애 | 미해결 카운터 + 상태 칩 + 원인/조치 이력 + 수동 해결 처리 |
+| 성능 관리 | p50/p95/p99 백분위 + TPS·p95 시계열 + 가장 느린 호출 Top 10 |
+| SLA | 가동률 / 평균 응답 vs 목표 (월/분기) |
+| AI 분석 | LLM(OpenAI) 또는 Fallback(TF-IDF) 자동 분기, 유사 사례 Top-K |
+
+## Ingest API (다른 시스템에서 호출 결과 보고)
+
+Hub 가 직접 호출하지 않고 다른 내부 시스템(영업/청구/심사) 이 외부 기관과 통신한 결과도 중앙 집계할 수 있습니다.
 
 ```bash
-# Backend
-cd backend
-python -m venv .venv && .venv/Scripts/activate          # Windows
-pip install -r requirements.txt
-export DATABASE_URL=sqlite+pysqlite:///./dev.db          # SQLite로 빠른 시작
-uvicorn app.main:app --reload
-
-# Frontend (다른 터미널)
-cd frontend
-npm install
-npm run dev
+curl -X POST http://localhost:8000/api/call-logs/ingest \
+  -H "Content-Type: application/json" \
+  -H "X-Ingest-Key: $INGEST_KEY"   # backend/.env 의 INGEST_API_KEY 미설정이면 생략 가능
+  -d '{
+    "interface_id": 1,
+    "status": "SUCCESS",
+    "duration_ms": 412,
+    "http_status": 200,
+    "request": {"endpoint": "...", "from": "sales-system"},
+    "response": {"body": {"ok": true}}
+  }'
 ```
+
+→ `triggered_by="ingest"` 로 표시되며 임계값 감지·WebSocket 라이브에 동일하게 반영.
 
 ## 디렉터리
 
 ```
 backend/
   app/
-    core/          config · DB · AES-GCM 보안 · WebSocket 매니저
-    models/        SQLAlchemy 모델 5종
-    schemas/       Pydantic 입출력 스키마
-    api/routes/    interfaces · executions · call_logs · incidents · sla · ai · monitoring(ws)
-    services/      executor · scheduler · detector · notifier · ai/{anomaly,rag}
-  tests/           pytest (security, detector classifier 등)
+    core/          config · DB · AES-GCM · WebSocket · KST 시간
+    models/        SQLAlchemy 5종 + reprocessing/error 컬럼
+    schemas/       Pydantic 입출력
+    api/routes/    interfaces · executions · call_logs · incidents · sla · performance · ai · monitoring
+    services/      executor (REST/SOAP/SFTP/Batch/MQ) · scheduler · detector · notifier · ai/{anomaly,rag}
+    scripts/       seed_demo.py — 보험사 현실 시드
+  tests/           pytest (security, executor classifier 등)
+fixtures/sftp/upload/   ← atmoz/sftp 마운트, 데모 CSV 3종
 
 frontend/
   src/
-    api/           Axios client · WebSocket 구독
+    api/           Axios + WebSocket 구독
     plugins/       Vuetify 테마
-    views/         Dashboard · Interfaces · Logs · Incidents · Sla · AiAssistant
+    utils/         포매터 (KST)
+    views/         Dashboard · Interfaces · Logs · Incidents · Sla · Performance · AiAssistant
     stores/        Pinia 라이브 스토어
 ```
 
-## Phase 로드맵
+## 구현 하이라이트
 
-- **Phase 1 (MVP)** — 인터페이스 CRUD, 수동/Cron 실행, 호출 로그 수집, 실시간 대시보드. ✅ 구현 완료
-- **Phase 2 (CORE)** — 임계값 자동 감지, 오류 유형 분류, Slack/Email 알림, SLA 리포트. ✅ 구현 완료
-- **Phase 3 (AI BOOST)** — Isolation Forest 이상 탐지, FAISS RAG 챗봇 (`/api/ai/ask`). ✅ 골격 완료 (실전 사용 시 OPENAI_API_KEY 필요)
+- **재처리(Reprocessing)**: `parent_log_id` 컬럼으로 lineage 추적, `POST /retry` 단건 + `POST /bulk-retry` 필터 일괄 + `GET /chain` lineage 트리
+- **에러 캡처**: 실행 시 `traceback.format_exception` 으로 풀 스택 + 응답 헤더 `call_logs.error_trace` 에 저장 → 운영자가 ELK 안 가도 원인 파악
+- **시간대**: PG 세션 timezone `Asia/Seoul`, Python `now_kst()`, APScheduler KST cron, 프론트 로컬 포맷터 일관 적용
+- **AI fallback**: OpenAI 키 없으면 sklearn TF-IDF char-ngram 으로 incident 검색 + 템플릿 응답 → 평가관 PC 에서도 시연 가능
+- **Ingest API**: 사이드카/SDK 도입 없이도 다른 시스템 호출 결과 수집 가능, 임계값 감지·라이브 broadcast 동일 적용
 
 ## 테스트 / CI
 
-GitHub Actions가 push/PR마다:
-
+GitHub Actions 가 push/PR 마다:
 1. backend ruff lint + pytest
 2. frontend type-check + production build
 3. backend / frontend Docker 이미지 빌드
 
 ## 보안 메모
 
-- `auth_secret` 컬럼은 평문이 아니라 **AES-GCM(256-bit) 암호화 후 base64**로 저장됩니다 (`app/core/security.py`).
-- 운영 배포 시 반드시 `SECRET_KEY` 를 `python -c "import os,base64;print(base64.b64encode(os.urandom(32)).decode())"` 로 새로 생성하세요.
+- `auth_secret` 컬럼은 평문이 아니라 **AES-GCM(256-bit) 암호화 후 base64** 로 저장 (`app/core/security.py`)
+- 운영 배포 시 반드시 `SECRET_KEY` 를 `python -c "import os,base64;print(base64.b64encode(os.urandom(32)).decode())"` 로 새로 생성
+- `INGEST_API_KEY` 설정하면 Ingest API 가 헤더 검증 (미설정 시 open)
 
 ## Contact
 박수산 · fasosan@gmail.com

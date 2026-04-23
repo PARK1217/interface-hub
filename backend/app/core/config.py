@@ -34,6 +34,10 @@ class Settings(BaseSettings):
     default_response_ms_threshold: int = 3000
     default_failure_rate_threshold: float = 0.10  # 10%
 
+    # Ingest API: if set, requires X-Ingest-Key header on POST /api/call-logs/ingest.
+    # Leave blank for open ingest (development).
+    ingest_api_key: str | None = None
+
     cors_origins: list[str] = ["http://localhost:5173", "http://127.0.0.1:5173"]
 
 

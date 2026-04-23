@@ -33,3 +33,4 @@ class IncidentOut(IncidentBase):
     interface_id: int
     detected_at: datetime
     resolved_at: datetime | None = None
+    related_log_count: int = 0

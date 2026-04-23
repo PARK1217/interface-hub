@@ -69,6 +69,7 @@ export interface IncidentItem {
   resolution: string | null;
   detected_at: string;
   resolved_at: string | null;
+  related_log_count?: number;
 }
 
 export interface SlaReportRow {
@@ -122,6 +123,8 @@ export const Incidents = {
   list: (params: Record<string, unknown> = {}) => api.get<IncidentItem[]>('/incidents', { params }),
   resolve: (id: number, resolution?: string) =>
     api.post<IncidentItem>(`/incidents/${id}/resolve`, null, { params: { resolution } }),
+  relatedLogs: (id: number, limit = 200) =>
+    api.get<CallLogItem[]>(`/incidents/${id}/related-logs`, { params: { limit } }),
 };
 
 export const Sla = {

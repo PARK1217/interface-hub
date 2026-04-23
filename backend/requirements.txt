@@ -5,7 +5,7 @@ pydantic-settings==2.7.1
 SQLAlchemy==2.0.36
 psycopg[binary]==3.2.3
 alembic==1.14.0
-redis==5.2.1
+redis[asyncio]==5.2.1
 httpx==0.28.1
 zeep==4.3.1
 APScheduler==3.11.0
@@ -13,6 +13,7 @@ cryptography==44.0.0
 python-multipart==0.0.20
 websockets==14.1
 croniter==5.0.1
+paramiko==3.5.0
 # Phase 2
 aiosmtplib==3.0.2
 # Phase 3 (optional, AI)

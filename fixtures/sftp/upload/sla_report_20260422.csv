@@ -1,0 +1,4 @@
+interface_name,uptime_pct,p95_ms,target_uptime,target_ms,met
+보험개발원-실손중복청구확인,98.66,194,99.5,800,false
+신용정보원-CB조회,97.77,376,99.0,1500,false
+건강보험심사평가원-요양기관조회,100.0,9275,98.0,8000,true

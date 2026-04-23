@@ -2,12 +2,16 @@ from __future__ import annotations
 
 from datetime import datetime, timedelta
 
-from fastapi import APIRouter, Depends, HTTPException, Query, status as http_status
+import asyncio
+
+from fastapi import APIRouter, Depends, Header, HTTPException, Query, status as http_status
 from sqlalchemy import and_, func, select
 from sqlalchemy.orm import Session
 
 from app.api.deps import get_db
+from app.core.config import get_settings
 from app.core.time import now_kst
+from app.core.websocket import ws_manager
 from app.models import CallLog, Interface
 from app.models.call_log import CallStatus
 from app.models.interface import ProtocolType
@@ -18,6 +22,7 @@ from app.schemas.call_log import (
     CallLogStats,
     HeatmapCell,
     HeatmapRow,
+    IngestRequest,
     TimeSeriesPoint,
 )
 from app.services.executor import execute_interface
@@ -189,6 +194,69 @@ def heatmap(
             )
         )
     return out
+
+
+# ============================================================================
+# Ingest — 외부 시스템이 자기 호출 결과를 보고하는 통로
+# ============================================================================
+@router.post("/ingest", response_model=CallLogOut, status_code=http_status.HTTP_201_CREATED)
+async def ingest_call_log(
+    payload: IngestRequest,
+    x_ingest_key: str | None = Header(default=None, alias="X-Ingest-Key"),
+    db: Session = Depends(get_db),
+) -> CallLogOut:
+    """Accept a call_log row pushed by another internal system.
+
+    Useful when the external API call wasn't executed by the Hub itself —
+    e.g. a sales system called KIDI directly, then POSTs the outcome here so
+    that all observability stays centralized.
+    """
+    settings = get_settings()
+    if settings.ingest_api_key and x_ingest_key != settings.ingest_api_key:
+        raise HTTPException(http_status.HTTP_401_UNAUTHORIZED, "invalid X-Ingest-Key")
+
+    itf = db.get(Interface, payload.interface_id)
+    if not itf:
+        raise HTTPException(http_status.HTTP_404_NOT_FOUND, "interface not found")
+
+    log_row = CallLog(
+        interface_id=payload.interface_id,
+        request=payload.request,
+        response=payload.response,
+        status=payload.status,
+        http_status=payload.http_status,
+        duration_ms=payload.duration_ms,
+        error_message=payload.error_message,
+        error_type=payload.error_type,
+        error_trace=payload.error_trace,
+        triggered_by="ingest",
+        called_at=payload.called_at or now_kst(),
+    )
+    db.add(log_row)
+    db.commit()
+    db.refresh(log_row)
+
+    # run threshold detector on ingested events too
+    try:
+        from app.services.detector import evaluate_after_call
+        evaluate_after_call(db, itf, log_row)
+    except Exception:  # noqa: BLE001
+        pass
+
+    await ws_manager.broadcast(
+        "call_log",
+        {
+            "id": log_row.id,
+            "interface_id": itf.id,
+            "interface_name": itf.name,
+            "status": log_row.status.value,
+            "http_status": log_row.http_status,
+            "duration_ms": log_row.duration_ms,
+            "called_at": log_row.called_at.isoformat() if log_row.called_at else None,
+            "triggered_by": "ingest",
+        },
+    )
+    return CallLogOut.model_validate(log_row)
 
 
 # ============================================================================
