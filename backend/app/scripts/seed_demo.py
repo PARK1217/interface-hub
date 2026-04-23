@@ -153,6 +153,44 @@ SEED_INTERFACES: list[dict] = [
         "rps": 1.2, "fail_rate": 0.01, "latency_ms": (90, 30),
         "sla": (99.0, 500),
     },
+    {
+        "name": "보험개발원-일일보험료정산-Batch",
+        "organization": "보험개발원 (KIDI)",
+        "description": "전일 보험계약 보험료 일괄 정산 파일 (SFTP 업로드)",
+        "protocol": ProtocolType.BATCH,
+        "endpoint": "sftp://batch.kidi.or.kr/incoming/PREMIUM_SETTLEMENT/",
+        "method": "POST",
+        "schedule_cron": "0 2 * * *",   # 매일 02:00 KST
+        "auth_type": AuthType.BASIC,
+        "rps": 0.0007, "fail_rate": 0.05, "latency_ms": (90000, 25000),
+        "sla": (99.0, 180000),
+        "request_template": {
+            "job_type": "DAILY_PREMIUM_SETTLEMENT",
+            "input_dir": "/sftp/in",
+            "result_dir": "/sftp/out/kidi",
+            "remote_host": "batch.kidi.or.kr",
+            "filename_pattern": "PREMIUM_*.csv",
+        },
+    },
+    {
+        "name": "금융결제원-자동이체결과수신-Batch",
+        "organization": "금융결제원 (KFTC)",
+        "description": "자동이체 출금 결과 파일 수신 및 적재",
+        "protocol": ProtocolType.BATCH,
+        "endpoint": "sftp://batch.kftc.or.kr/outgoing/AUTO_DEBIT_RESULT/",
+        "method": "GET",
+        "schedule_cron": "30 9 * * *",  # 매일 09:30 KST
+        "auth_type": AuthType.API_KEY,
+        "rps": 0.0007, "fail_rate": 0.02, "latency_ms": (45000, 12000),
+        "sla": (99.5, 90000),
+        "request_template": {
+            "job_type": "AUTO_DEBIT_RESULT_INGEST",
+            "input_dir": "/sftp/inbound",
+            "result_dir": "/sftp/processed",
+            "remote_host": "batch.kftc.or.kr",
+            "filename_pattern": "ADR_*.csv",
+        },
+    },
 ]
 
 
@@ -388,6 +426,39 @@ def _payloads_for(name: str) -> tuple[dict | None, dict | None]:
             "estimated_won": random.randint(15_000_000, 75_000_000),
         }
         return req, resp
+    if "일일보험료정산" in name:
+        records = random.randint(80000, 150000)
+        req = {
+            "job_type": "DAILY_PREMIUM_SETTLEMENT",
+            "input_dir": "/sftp/in",
+            "result_dir": "/sftp/out/kidi",
+            "as_of_date": (NOW - timedelta(days=1)).strftime("%Y-%m-%d"),
+        }
+        resp = {
+            "job_type": "DAILY_PREMIUM_SETTLEMENT",
+            "records_processed": records,
+            "errors": random.randint(0, records // 500),
+            "result_file": f"/sftp/out/kidi/premium_{(NOW - timedelta(days=1)).strftime('%Y%m%d')}.csv",
+            "total_won": random.randint(2_000_000_000, 6_500_000_000),
+            "input_files_picked": random.randint(2, 4),
+        }
+        return req, resp
+    if "자동이체결과수신" in name:
+        records = random.randint(20000, 65000)
+        req = {
+            "job_type": "AUTO_DEBIT_RESULT_INGEST",
+            "remote_dir": "/outgoing/AUTO_DEBIT_RESULT",
+            "filename_pattern": "ADR_*.csv",
+        }
+        resp = {
+            "job_type": "AUTO_DEBIT_RESULT_INGEST",
+            "files_picked": random.randint(1, 3),
+            "records_processed": records,
+            "success_records": int(records * 0.973),
+            "failure_records": int(records * 0.027),
+            "ingested_at": NOW.isoformat(),
+        }
+        return req, resp
     return None, None
 
 
@@ -499,6 +570,7 @@ def main() -> None:
                 method=spec["method"],
                 schedule_cron=spec["schedule_cron"],
                 auth_type=spec["auth_type"],
+                request_template=spec.get("request_template"),
                 enabled=True,
             )
             db.add(itf)

@@ -98,6 +98,45 @@ async def _exec_soap(itf: Interface) -> tuple[int | None, dict | None, Exception
         return None, None, e
 
 
+async def _exec_batch(itf: Interface) -> tuple[int | None, dict | None, Exception | None]:
+    """Simulated batch job — pickup → process → result file.
+
+    Real production would parse `request_template` for SFTP host, file glob,
+    business job type, etc. Here we emulate a deterministic-ish run so the UI
+    has something to display.
+    """
+    import random
+
+    cfg = itf.request_template or {}
+    job_type = cfg.get("job_type", "GENERIC_BATCH")
+    input_dir = cfg.get("input_dir", "/sftp/in")
+    result_dir = cfg.get("result_dir", "/sftp/out")
+
+    # simulate processing time (slow ish, reflects real batch latency)
+    await asyncio.sleep(random.uniform(0.3, 1.5))
+
+    records = random.randint(800, 12000)
+    errors = random.randint(0, max(1, records // 200))
+    duration_part = random.randint(800, 4000)
+    result_file = f"{result_dir}/{job_type.lower()}_{itf.id}_{int(time.time())}.csv"
+
+    payload = {
+        "headers": {"x-job-type": job_type, "x-pickup-dir": input_dir},
+        "body": {
+            "job_type": job_type,
+            "records_processed": records,
+            "errors": errors,
+            "result_file": result_file,
+            "process_ms": duration_part,
+            "input_files_picked": random.randint(1, 5),
+        },
+    }
+    # synthetic status: 200 ok, occasionally 500 if too many errors
+    if errors > records // 100:
+        return 500, payload | {"body": payload["body"] | {"reason": "ERROR_RATE_EXCEEDED"}}, None
+    return 200, payload, None
+
+
 async def execute_interface(
     itf: Interface,
     db: Session,
@@ -120,6 +159,8 @@ async def execute_interface(
         http_status, response, exc = await _exec_rest(itf)
     elif itf.protocol == ProtocolType.SOAP:
         http_status, response, exc = await _exec_soap(itf)
+    elif itf.protocol == ProtocolType.BATCH:
+        http_status, response, exc = await _exec_batch(itf)
     elif itf.protocol in (ProtocolType.FTP, ProtocolType.MQ):
         exc = NotImplementedError(f"protocol {itf.protocol} not yet implemented")
     else:

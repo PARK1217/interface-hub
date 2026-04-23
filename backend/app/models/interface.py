@@ -14,6 +14,7 @@ class ProtocolType(str, enum.Enum):
     SOAP = "SOAP"
     FTP = "FTP"
     MQ = "MQ"
+    BATCH = "BATCH"
 
 
 class AuthType(str, enum.Enum):

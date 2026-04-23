@@ -36,7 +36,7 @@
           <v-text-field v-model="form.organization" label="기관" />
           <v-row>
             <v-col cols="6">
-              <v-select v-model="form.protocol" :items="['REST', 'SOAP', 'FTP', 'MQ']" label="프로토콜" />
+              <v-select v-model="form.protocol" :items="['REST', 'SOAP', 'FTP', 'MQ', 'BATCH']" label="프로토콜" />
             </v-col>
             <v-col cols="6">
               <v-select v-model="form.method" :items="['GET', 'POST', 'PUT', 'PATCH', 'DELETE']" label="메서드" />
@@ -104,7 +104,7 @@ const form = reactive<Partial<InterfaceItem> & { auth_secret?: string }>({
 });
 
 function protocolColor(p: string) {
-  return { REST: 'primary', SOAP: 'secondary', FTP: 'warning', MQ: 'success' }[p] ?? 'grey';
+  return { REST: 'primary', SOAP: 'secondary', FTP: 'warning', MQ: 'success', BATCH: 'purple' }[p] ?? 'grey';
 }
 
 function notify(text: string, color = 'success') {

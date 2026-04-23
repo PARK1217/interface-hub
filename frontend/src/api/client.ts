@@ -10,7 +10,7 @@ export interface InterfaceItem {
   name: string;
   description?: string | null;
   organization?: string | null;
-  protocol: 'REST' | 'SOAP' | 'FTP' | 'MQ';
+  protocol: 'REST' | 'SOAP' | 'FTP' | 'MQ' | 'BATCH';
   endpoint: string;
   method: string;
   headers?: Record<string, string> | null;

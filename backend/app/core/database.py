@@ -53,6 +53,8 @@ _DEMO_MIGRATIONS: list[str] = [
     "CREATE INDEX IF NOT EXISTS ix_call_logs_parent_log_id ON call_logs(parent_log_id)",
     "CREATE INDEX IF NOT EXISTS ix_call_logs_is_reprocessed ON call_logs(is_reprocessed)",
     "CREATE INDEX IF NOT EXISTS ix_call_logs_error_type ON call_logs(error_type)",
+    # Add new protocol enum value if missing (Postgres ENUM is finicky)
+    "ALTER TYPE protocoltype ADD VALUE IF NOT EXISTS 'BATCH'",
 ]
 
 
