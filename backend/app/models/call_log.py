@@ -33,6 +33,8 @@ class CallLog(Base):
     http_status: Mapped[int | None] = mapped_column(Integer, default=None)
     duration_ms: Mapped[int] = mapped_column(Integer, default=0, index=True)
     error_message: Mapped[str | None] = mapped_column(Text, default=None)
+    error_type: Mapped[str | None] = mapped_column(String(80), default=None, index=True)
+    error_trace: Mapped[str | None] = mapped_column(Text, default=None)
 
     triggered_by: Mapped[str] = mapped_column(String(20), default="manual")  # manual|schedule|reprocess
     called_at: Mapped[datetime] = mapped_column(

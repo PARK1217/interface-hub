@@ -1,12 +1,13 @@
 from __future__ import annotations
 
-from datetime import datetime, timedelta, timezone
+from datetime import timedelta
 
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.api.deps import get_db
+from app.core.time import now_kst
 from app.models import CallLog, Interface, SlaTarget
 from app.models.call_log import CallStatus
 from app.schemas.sla_target import SlaReportRow, SlaTargetCreate, SlaTargetOut, SlaTargetUpdate
@@ -53,7 +54,7 @@ def report(
     days: int = 30,
     db: Session = Depends(get_db),
 ) -> list[SlaReportRow]:
-    since = datetime.now(timezone.utc) - timedelta(days=days)
+    since = now_kst() - timedelta(days=days)
     interfaces = db.scalars(select(Interface)).all()
     rows: list[SlaReportRow] = []
     for itf in interfaces:

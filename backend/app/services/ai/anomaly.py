@@ -3,11 +3,12 @@
 from __future__ import annotations
 
 import logging
-from datetime import datetime, timedelta, timezone
+from datetime import timedelta
 
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
+from app.core.time import now_kst
 from app.models import CallLog
 from app.models.call_log import CallStatus
 
@@ -25,7 +26,7 @@ def score_anomalies(db: Session, interface_id: int) -> tuple[float, bool]:
     A negative score from sklearn's IsolationForest indicates an anomaly. We
     return raw score so callers can rank multiple interfaces.
     """
-    now = datetime.now(timezone.utc)
+    now = now_kst()
     train_since = now - timedelta(hours=24)
     score_since = now - timedelta(hours=1)
 

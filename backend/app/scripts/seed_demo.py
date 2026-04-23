@@ -15,18 +15,19 @@ from __future__ import annotations
 
 import math
 import random
-from datetime import datetime, timedelta, timezone
+from datetime import timedelta
 
 from sqlalchemy import delete
 
 from app.core.database import SessionLocal, init_db
+from app.core.time import now_kst
 from app.models import CallLog, Incident, Interface, SlaTarget
 from app.models.call_log import CallStatus
 from app.models.incident import IncidentType
 from app.models.interface import AuthType, ProtocolType
 
 random.seed(42)
-NOW = datetime.now(timezone.utc)
+NOW = now_kst()
 WINDOW_DAYS = 7
 
 
@@ -214,23 +215,205 @@ SEED_INCIDENTS: list[dict] = [
 ]
 
 
-def _classify_log(success: bool, latency: int, profile: dict) -> tuple[CallStatus, int | None, str | None]:
-    """Map a synthetic outcome back to a CallStatus + http_status + error msg."""
+def _classify_log(
+    success: bool, latency: int, profile: dict
+) -> tuple[CallStatus, int | None, str | None, str | None, str | None]:
+    """Map a synthetic outcome → (status, http_status, error_msg, error_type, error_trace)."""
     if success:
-        return CallStatus.SUCCESS, 200, None
-    # weighted failure types for variety
-    kind = random.choices(
-        ["TIMEOUT", "AUTH", "FORMAT", "SERVER"],
-        weights=[1, 1, 1, 4],
-        k=1,
-    )[0]
+        return CallStatus.SUCCESS, 200, None, None, None
+    kind = random.choices(["TIMEOUT", "AUTH", "FORMAT", "SERVER"], weights=[1, 1, 1, 4], k=1)[0]
     if kind == "TIMEOUT":
-        return CallStatus.TIMEOUT, None, "Read timed out after 10s"
+        return (
+            CallStatus.TIMEOUT,
+            None,
+            "Read timed out after 10s",
+            "ReadTimeout",
+            (
+                'Traceback (most recent call last):\n'
+                '  File "/app/app/services/executor.py", line 78, in _exec_rest\n'
+                '    resp = await client.request(method, itf.endpoint, **req_kwargs)\n'
+                '  File "/usr/local/lib/python3.12/site-packages/httpx/_client.py", line 1576, in request\n'
+                '    return await self.send(request, auth=auth, follow_redirects=follow_redirects)\n'
+                '  File "/usr/local/lib/python3.12/site-packages/httpx/_client.py", line 1665, in send\n'
+                '    response = await self._send_handling_auth(...)\n'
+                '  File "/usr/local/lib/python3.12/site-packages/httpcore/_async/connection.py", line 99, in handle_async_request\n'
+                '    raise exc\n'
+                'httpx.ReadTimeout: timed out\n'
+            ),
+        )
     if kind == "AUTH":
-        return CallStatus.AUTH_ERROR, 401, "401 Unauthorized — token expired"
+        return (
+            CallStatus.AUTH_ERROR,
+            401,
+            "401 Unauthorized — access token expired or invalid",
+            "HTTPStatusError",
+            (
+                'Traceback (most recent call last):\n'
+                '  File "/app/app/services/executor.py", line 82, in _exec_rest\n'
+                '    resp.raise_for_status()\n'
+                '  File "/usr/local/lib/python3.12/site-packages/httpx/_models.py", line 763, in raise_for_status\n'
+                '    raise HTTPStatusError(message, request=request, response=self)\n'
+                'httpx.HTTPStatusError: Client error \'401 Unauthorized\' for url \'%s\'\n'
+                'For more info: https://httpwg.org/specs/rfc9110.html#status.401\n'
+            )
+            % profile.get("endpoint_short", "https://api.example.com"),
+        )
     if kind == "FORMAT":
-        return CallStatus.FORMAT_ERROR, 422, "422 Unprocessable Entity — schema mismatch"
-    return CallStatus.SERVER_ERROR, random.choice([500, 502, 503]), "5xx from upstream"
+        return (
+            CallStatus.FORMAT_ERROR,
+            422,
+            "422 Unprocessable Entity — request schema mismatch",
+            "ValidationError",
+            (
+                'Traceback (most recent call last):\n'
+                '  File "/app/app/services/executor.py", line 96, in execute_interface\n'
+                '    payload = schema.validate(req_body)\n'
+                '  File "/app/app/services/schema_validator.py", line 41, in validate\n'
+                '    raise ValidationError(errors)\n'
+                'app.errors.ValidationError: [{"path":"$.amount","msg":"must be > 0"}]\n'
+            ),
+        )
+    code = random.choice([500, 502, 503])
+    return (
+        CallStatus.SERVER_ERROR,
+        code,
+        f"{code} {('Internal Server Error', 'Bad Gateway', 'Service Unavailable')[[500,502,503].index(code)]} from upstream",
+        "HTTPStatusError",
+        (
+            f'Traceback (most recent call last):\n'
+            f'  File "/app/app/services/executor.py", line 82, in _exec_rest\n'
+            f'    resp.raise_for_status()\n'
+            f'  File "/usr/local/lib/python3.12/site-packages/httpx/_models.py", line 763, in raise_for_status\n'
+            f'    raise HTTPStatusError(message, request=request, response=self)\n'
+            f'httpx.HTTPStatusError: Server error \'{code}\' for url\n'
+        ),
+    )
+
+
+# ---------- realistic payload generators -------------------------------------
+# Each function returns (request_body, success_response_body).
+
+def _hash_pii(prefix: str = "") -> str:
+    """Synthetic SHA-like hash for masked PII fields."""
+    return prefix + "".join(random.choices("0123456789abcdef", k=16))
+
+
+def _claim_no() -> str:
+    return f"CLM{NOW.strftime('%Y')}{random.randint(100000, 999999)}"
+
+
+def _trace_id() -> str:
+    return f"trace-{random.randint(10**11, 10**12 - 1):x}"
+
+
+def _payloads_for(name: str) -> tuple[dict | None, dict | None]:
+    if "실손중복청구" in name:
+        req = {
+            "resident_no_hash": _hash_pii("rrn-"),
+            "claim_no": _claim_no(),
+            "treatment_date": "2026-04-15",
+            "hospital_code": f"H{random.randint(10000, 99999)}",
+            "amount_won": random.choice([45000, 120000, 230000, 580000]),
+        }
+        resp = {
+            "is_duplicate": random.random() < 0.08,
+            "similar_claims": [],
+            "checked_at": NOW.isoformat(),
+            "trace_id": _trace_id(),
+        }
+        return req, resp
+    if "CB조회" in name:
+        req = {"rrn_hash": _hash_pii("rrn-"), "query_type": "PRE_CONTRACT", "request_id": _trace_id()}
+        resp = {
+            "credit_score": random.randint(620, 950),
+            "grade": random.choice(["A1", "A2", "B1", "B2", "C1"]),
+            "last_updated": "2026-04-22",
+        }
+        return req, resp
+    if "요양기관조회" in name:
+        req = {"as_of_date": NOW.strftime("%Y-%m-%d"), "page": 1, "size": 1000}
+        resp = {"count": 98421, "page": 1, "next_cursor": "eyJvZmZzZXQiOjEwMDB9"}
+        return req, resp
+    if "운전면허확인" in name:
+        req = {
+            "name": "홍길동",
+            "license_no": f"{random.randint(11, 28)}-{random.randint(10, 99):02d}-{random.randint(100000, 999999)}-{random.randint(10, 99)}",
+            "rrn_front": "900101",
+        }
+        resp = {"valid": True, "type": "1종보통", "expires_at": "2030-09-30"}
+        return req, resp
+    if "사업자상태조회" in name:
+        req = {"business_no": f"{random.randint(100, 999)}-{random.randint(10, 99)}-{random.randint(10000, 99999)}"}
+        resp = {"status": "01", "status_name": "계속사업자", "tax_type": "일반과세자"}
+        return req, resp
+    if "마이데이터" in name:
+        req = {"consent_id": _hash_pii("cnst-"), "scope": ["bank.account", "card.tx"], "from": "2026-01-01"}
+        resp = {
+            "accounts": random.randint(2, 7),
+            "cards": random.randint(1, 4),
+            "total_assets_won": random.randint(5_000_000, 320_000_000),
+            "fetched_at": NOW.isoformat(),
+        }
+        return req, resp
+    if "전산사고보고" in name:
+        req = {
+            "incident_id": f"INC{NOW.strftime('%Y%m')}{random.randint(100, 999)}",
+            "severity": random.choice(["WARNING", "CRITICAL"]),
+            "occurred_at": NOW.isoformat(),
+            "summary": "외부 인터페이스 5xx 다발",
+        }
+        resp = {"received": True, "report_no": f"FSS-{random.randint(10000, 99999)}"}
+        return req, resp
+    if "알림톡" in name:
+        req = {
+            "template_code": "INSURE_PAYMENT_DONE_v3",
+            "to": _hash_pii("phone-"),
+            "vars": {"name": "홍**", "amount": "1,250,000"},
+        }
+        resp = {"message_id": _trace_id(), "status": "ACCEPTED"}
+        return req, resp
+    if "토스" in name or "자동이체" in name:
+        req = {
+            "billing_key": _hash_pii("bk-"),
+            "amount": random.choice([45000, 89000, 120000, 230000]),
+            "order_id": f"ORD{random.randint(10**9, 10**10 - 1)}",
+        }
+        resp = {"approved_at": NOW.isoformat(), "card_company": random.choice(["KB", "신한", "삼성", "현대"])}
+        return req, resp
+    if "차량시세" in name:
+        req = {"queue": "CARMARKET.OUT", "consumer_group": "noahub-cg-01"}
+        resp = {
+            "model": random.choice(["현대 그랜저 IG", "기아 K5", "BMW 520i", "벤츠 E300"]),
+            "year": random.randint(2018, 2025),
+            "estimated_won": random.randint(15_000_000, 75_000_000),
+        }
+        return req, resp
+    return None, None
+
+
+def _failure_response(profile_status: CallStatus) -> dict | None:
+    if profile_status == CallStatus.AUTH_ERROR:
+        return {
+            "headers": {
+                "www-authenticate": 'Bearer realm="api", error="invalid_token", error_description="The access token expired"',
+                "content-type": "application/json",
+            },
+            "body": {"error": "INVALID_TOKEN", "message": "access token expired"},
+        }
+    if profile_status == CallStatus.FORMAT_ERROR:
+        return {
+            "headers": {"content-type": "application/json"},
+            "body": {
+                "error": "VALIDATION_FAILED",
+                "fields": [{"path": "$.amount", "msg": "must be > 0"}],
+            },
+        }
+    if profile_status == CallStatus.SERVER_ERROR:
+        return {
+            "headers": {"content-type": "application/json", "x-trace-id": _trace_id()},
+            "body": {"error": "UPSTREAM_5XX", "trace_id": _trace_id()},
+        }
+    return None
 
 
 def _generate_logs(itf: Interface, profile: dict, db) -> int:
@@ -244,6 +427,7 @@ def _generate_logs(itf: Interface, profile: dict, db) -> int:
     rows = []
     mean, std = profile["latency_ms"]
     base_fail = profile["fail_rate"]
+    req_template, resp_template = _payloads_for(itf.name)
 
     # 30% chance an interface has a "bad window" in the last 24h
     bad_start = NOW - timedelta(hours=random.randint(2, 22)) if random.random() < 0.3 else None
@@ -265,17 +449,26 @@ def _generate_logs(itf: Interface, profile: dict, db) -> int:
         latency_mean = mean * (2.5 if in_bad else 1)
         latency = max(5, int(random.lognormvariate(math.log(max(latency_mean, 1)), 0.4)))
         success = random.random() > min(fail_rate, 0.6)
-        status, http_status, err = _classify_log(success, latency, profile)
+        status, http_status, err, err_type, err_trace = _classify_log(success, latency, profile)
 
+        # snapshot a fresh body per row so request varies (different claim_no etc.)
+        req_body, succ_body = _payloads_for(itf.name)
         rows.append(
             CallLog(
                 interface_id=itf.id,
-                request={"method": itf.method, "endpoint": itf.endpoint, "body": None},
-                response=None if not success else {"ok": True},
+                request={
+                    "method": itf.method,
+                    "endpoint": itf.endpoint,
+                    "headers": {"X-Request-ID": _trace_id(), "Content-Type": "application/json"},
+                    "body": req_body,
+                },
+                response=succ_body if success else _failure_response(status),
                 status=status,
                 http_status=http_status,
                 duration_ms=latency,
                 error_message=err,
+                error_type=err_type,
+                error_trace=err_trace,
                 triggered_by="schedule" if itf.schedule_cron else "manual",
                 called_at=ts,
             )

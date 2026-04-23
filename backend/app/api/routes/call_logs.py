@@ -1,12 +1,13 @@
 from __future__ import annotations
 
-from datetime import datetime, timedelta, timezone
+from datetime import datetime, timedelta
 
 from fastapi import APIRouter, Depends, HTTPException, Query, status as http_status
 from sqlalchemy import and_, func, select
 from sqlalchemy.orm import Session
 
 from app.api.deps import get_db
+from app.core.time import now_kst
 from app.models import CallLog, Interface
 from app.models.call_log import CallStatus
 from app.schemas.call_log import (
@@ -69,7 +70,7 @@ def stats(
     db: Session = Depends(get_db),
 ) -> CallLogStats:
     if since is None:
-        since = datetime.now(timezone.utc) - timedelta(hours=24)
+        since = now_kst() - timedelta(hours=24)
     base = select(CallLog).where(CallLog.called_at >= since)
     if interface_id is not None:
         base = base.where(CallLog.interface_id == interface_id)
@@ -92,7 +93,7 @@ def timeseries(
     db: Session = Depends(get_db),
 ) -> list[TimeSeriesPoint]:
     if since is None:
-        since = datetime.now(timezone.utc) - timedelta(hours=6)
+        since = now_kst() - timedelta(hours=6)
     # Postgres date_bin would be cleaner, but we keep cross-DB by bucketing in Python
     stmt = select(CallLog).where(CallLog.called_at >= since)
     if interface_id is not None:

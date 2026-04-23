@@ -32,6 +32,8 @@ export interface CallLogItem {
   http_status: number | null;
   duration_ms: number;
   error_message: string | null;
+  error_type?: string | null;
+  error_trace?: string | null;
   triggered_by: string;
   called_at: string;
   request?: Record<string, unknown> | null;

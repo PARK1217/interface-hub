@@ -49,6 +49,9 @@
         show-select
         density="comfortable"
       >
+        <template #item.called_at="{ item }">
+          <span class="text-caption">{{ formatDateTime(item.called_at) }}</span>
+        </template>
         <template #item.status="{ item }">
           <v-chip size="small" :color="item.status === 'SUCCESS' ? 'success' : 'error'">{{ item.status }}</v-chip>
         </template>
@@ -75,6 +78,14 @@
         </template>
         <template #item.actions="{ item }">
           <v-btn
+            icon="mdi-eye-outline"
+            size="x-small"
+            variant="text"
+            color="primary"
+            title="상세 보기"
+            @click="openDetail(item)"
+          />
+          <v-btn
             v-if="canRetry(item)"
             icon="mdi-restart"
             size="x-small"
@@ -97,6 +108,117 @@
       </v-data-table>
     </v-card>
 
+    <!-- detail dialog -->
+    <v-dialog v-model="detailDialog" max-width="980" scrollable>
+      <v-card v-if="detail">
+        <v-card-title class="d-flex align-center">
+          <span>호출 상세 #{{ detail.id }}</span>
+          <v-chip
+            class="ml-3"
+            size="small"
+            :color="detail.status === 'SUCCESS' ? 'success' : 'error'"
+          >
+            {{ detail.status }}
+          </v-chip>
+          <v-chip v-if="detail.http_status" class="ml-2" size="small" variant="outlined">
+            HTTP {{ detail.http_status }}
+          </v-chip>
+          <v-spacer />
+          <v-btn icon="mdi-content-copy" size="small" variant="text" title="JSON 복사" @click="copyDetail" />
+          <v-btn
+            v-if="canRetry(detail)"
+            color="warning"
+            size="small"
+            variant="tonal"
+            prepend-icon="mdi-restart"
+            class="ml-2"
+            @click="retryOne(detail); detailDialog = false"
+          >
+            재실행
+          </v-btn>
+        </v-card-title>
+
+        <v-card-text>
+          <v-row dense>
+            <v-col cols="6" md="3">
+              <div class="text-caption text-medium-emphasis">인터페이스 ID</div>
+              <div>#{{ detail.interface_id }}</div>
+            </v-col>
+            <v-col cols="6" md="3">
+              <div class="text-caption text-medium-emphasis">소요 시간</div>
+              <div>{{ detail.duration_ms }} ms</div>
+            </v-col>
+            <v-col cols="6" md="3">
+              <div class="text-caption text-medium-emphasis">트리거</div>
+              <div>{{ detail.triggered_by }}</div>
+            </v-col>
+            <v-col cols="6" md="3">
+              <div class="text-caption text-medium-emphasis">호출 시각</div>
+              <div>{{ formatDateTime(detail.called_at) }}</div>
+            </v-col>
+            <v-col v-if="detail.parent_log_id || detail.retry_count" cols="12">
+              <div class="text-caption text-medium-emphasis">재처리</div>
+              <v-chip size="small" color="info" variant="tonal">
+                retry #{{ detail.retry_count }} of #{{ detail.parent_log_id }}
+              </v-chip>
+            </v-col>
+          </v-row>
+
+          <!-- Error block — only when failed -->
+          <template v-if="detail.error_message || detail.error_type">
+            <v-divider class="my-4" />
+            <div class="d-flex align-center mb-2">
+              <v-icon color="error" icon="mdi-alert-octagon" class="mr-2" />
+              <span class="text-subtitle-2">에러 상세</span>
+              <v-chip v-if="detail.error_type" size="x-small" color="error" variant="tonal" class="ml-3">
+                {{ detail.error_type }}
+              </v-chip>
+            </div>
+            <v-alert
+              v-if="detail.error_message"
+              type="error"
+              variant="tonal"
+              density="compact"
+              class="mb-2"
+            >
+              {{ detail.error_message }}
+            </v-alert>
+            <v-expansion-panels v-if="detail.error_trace" variant="accordion">
+              <v-expansion-panel>
+                <v-expansion-panel-title>
+                  <v-icon icon="mdi-code-tags" size="small" class="mr-2" />
+                  스택 트레이스 ({{ (detail.error_trace || '').split('\n').length }}줄)
+                </v-expansion-panel-title>
+                <v-expansion-panel-text>
+                  <pre class="json-block">{{ detail.error_trace }}</pre>
+                </v-expansion-panel-text>
+              </v-expansion-panel>
+            </v-expansion-panels>
+          </template>
+
+          <v-divider class="my-4" />
+
+          <div class="text-subtitle-2 mb-2">
+            <v-icon icon="mdi-arrow-up-bold-circle-outline" size="small" /> Request
+          </div>
+          <pre class="json-block">{{ pretty(detail.request) }}</pre>
+
+          <div class="text-subtitle-2 mt-4 mb-2">
+            <v-icon icon="mdi-arrow-down-bold-circle-outline" size="small" /> Response
+            <span v-if="responseHeaders" class="text-caption text-medium-emphasis ml-2">
+              (헤더 {{ Object.keys(responseHeaders).length }}개 포함)
+            </span>
+          </div>
+          <pre class="json-block">{{ pretty(detail.response) }}</pre>
+        </v-card-text>
+
+        <v-card-actions>
+          <v-spacer />
+          <v-btn @click="detailDialog = false">닫기</v-btn>
+        </v-card-actions>
+      </v-card>
+    </v-dialog>
+
     <!-- chain dialog -->
     <v-dialog v-model="chainDialog" max-width="900">
       <v-card>
@@ -116,7 +238,7 @@
                 </v-chip>
                 <v-chip v-if="idx === 0" size="x-small" variant="tonal">원본</v-chip>
                 <v-chip v-else size="x-small" color="info" variant="tonal">retry #{{ node.retry_count }}</v-chip>
-                <span class="text-caption text-medium-emphasis">{{ node.called_at }} · {{ node.duration_ms }}ms</span>
+                <span class="text-caption text-medium-emphasis">{{ formatDateTime(node.called_at) }} · {{ node.duration_ms }}ms</span>
               </div>
               <div v-if="node.error_message" class="text-caption text-error mt-1">{{ node.error_message }}</div>
             </v-timeline-item>
@@ -134,8 +256,9 @@
 </template>
 
 <script setup lang="ts">
-import { onMounted, reactive, ref } from 'vue';
+import { computed, onMounted, reactive, ref } from 'vue';
 import { CallLogs, type CallLogItem } from '@/api/client';
+import { formatDateTime } from '@/utils/format';
 
 const statuses = ['SUCCESS', 'FAILURE', 'TIMEOUT', 'AUTH_ERROR', 'FORMAT_ERROR', 'SERVER_ERROR'];
 const headers = [
@@ -157,6 +280,8 @@ const retrying = ref<number | null>(null);
 const bulkBusy = ref(false);
 const chainDialog = ref(false);
 const chain = ref<CallLogItem[]>([]);
+const detailDialog = ref(false);
+const detail = ref<CallLogItem | null>(null);
 const snack = reactive({ show: false, text: '', color: 'success' });
 
 const filter = reactive<{
@@ -229,6 +354,31 @@ async function bulkRetry() {
   }
 }
 
+function pretty(v: unknown): string {
+  if (v === null || v === undefined) return '(없음)';
+  return JSON.stringify(v, null, 2);
+}
+
+const responseHeaders = computed(() => {
+  const h = (detail.value?.response as any)?.headers;
+  return h && typeof h === 'object' ? h : null;
+});
+
+function openDetail(item: CallLogItem) {
+  detail.value = item;
+  detailDialog.value = true;
+}
+
+async function copyDetail() {
+  if (!detail.value) return;
+  try {
+    await navigator.clipboard.writeText(JSON.stringify(detail.value, null, 2));
+    notify('전체 JSON을 클립보드에 복사했습니다');
+  } catch {
+    notify('복사 실패', 'error');
+  }
+}
+
 async function openChain(id: number) {
   try {
     chain.value = (await CallLogs.chain(id)).data;
@@ -240,3 +390,18 @@ async function openChain(id: number) {
 
 onMounted(load);
 </script>
+
+<style scoped>
+.json-block {
+  background: #0e1116;
+  color: #e6edf3;
+  padding: 12px 14px;
+  border-radius: 6px;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", monospace;
+  font-size: 12.5px;
+  line-height: 1.45;
+  overflow: auto;
+  max-height: 320px;
+  white-space: pre;
+}
+</style>

@@ -6,6 +6,8 @@ services:
       POSTGRES_USER: ${POSTGRES_USER:-noahub}
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-noahub_pw}
       POSTGRES_DB: ${POSTGRES_DB:-noahub}
+      TZ: Asia/Seoul
+      PGTZ: Asia/Seoul
     ports:
       - "5432:5432"
     volumes:
@@ -32,6 +34,8 @@ services:
     container_name: noa-hub-backend
     env_file:
       - ./backend/.env
+    environment:
+      TZ: Asia/Seoul
     depends_on:
       postgres:
         condition: service_healthy

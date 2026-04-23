@@ -19,6 +19,8 @@ class CallLogOut(BaseModel):
     http_status: int | None = None
     duration_ms: int
     error_message: str | None = None
+    error_type: str | None = None
+    error_trace: str | None = None
     triggered_by: str
     called_at: datetime
     parent_log_id: int | None = None

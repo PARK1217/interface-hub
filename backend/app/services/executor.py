@@ -9,6 +9,7 @@ from __future__ import annotations
 import asyncio
 import logging
 import time
+import traceback
 from typing import Any
 
 import httpx
@@ -71,9 +72,13 @@ async def _exec_rest(itf: Interface) -> tuple[int | None, dict | None, Exception
                 req_kwargs["json"] = body
             resp = await client.request(method, itf.endpoint, **req_kwargs)
             try:
-                payload = resp.json()
+                body_payload: Any = resp.json()
             except ValueError:
-                payload = {"text": resp.text[:2000]}
+                body_payload = {"text": resp.text[:2000]}
+            payload = {
+                "headers": dict(resp.headers),
+                "body": body_payload,
+            }
             return resp.status_code, payload, None
     except Exception as e:  # noqa: BLE001
         return None, None, e
@@ -123,6 +128,13 @@ async def execute_interface(
     duration_ms = int((time.perf_counter() - started) * 1000)
     status = _classify(http_status, exc)
 
+    err_type: str | None = None
+    err_trace: str | None = None
+    if exc is not None:
+        err_type = type(exc).__name__
+        # truncate trace to keep logs row reasonably small (~4KB)
+        err_trace = "".join(traceback.format_exception(type(exc), exc, exc.__traceback__))[-4000:]
+
     log_row = CallLog(
         interface_id=itf.id,
         request={
@@ -135,6 +147,8 @@ async def execute_interface(
         http_status=http_status,
         duration_ms=duration_ms,
         error_message=str(exc) if exc else None,
+        error_type=err_type,
+        error_trace=err_trace,
         triggered_by="reprocess" if parent_log is not None else triggered_by,
         parent_log_id=parent_log.id if parent_log is not None else None,
         retry_count=(parent_log.retry_count + 1) if parent_log is not None else 0,

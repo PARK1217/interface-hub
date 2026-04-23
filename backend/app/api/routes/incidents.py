@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from datetime import datetime, timezone
+from app.core.time import now_kst
 
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy import select
@@ -57,7 +57,7 @@ def resolve_incident(
     obj = db.get(Incident, incident_id)
     if not obj:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "incident not found")
-    obj.resolved_at = datetime.now(timezone.utc)
+    obj.resolved_at = now_kst()
     if resolution:
         obj.resolution = resolution
     db.commit()

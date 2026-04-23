@@ -35,7 +35,7 @@
               <v-list-item-title>
                 #{{ c.interface_id }} · {{ c.status }} · {{ c.duration_ms }}ms
               </v-list-item-title>
-              <v-list-item-subtitle>{{ c.called_at }}</v-list-item-subtitle>
+              <v-list-item-subtitle>{{ formatDateTimeShort(c.called_at) }}</v-list-item-subtitle>
             </v-list-item>
             <v-list-item v-if="!live.recentCalls.length">
               <v-list-item-subtitle>아직 수신된 호출이 없습니다.</v-list-item-subtitle>
@@ -51,6 +51,7 @@
 import { computed, onMounted, ref } from 'vue';
 import { CallLogs } from '@/api/client';
 import { useLiveStore } from '@/stores/live';
+import { formatDateTimeShort } from '@/utils/format';
 
 const live = useLiveStore();
 live.bind();

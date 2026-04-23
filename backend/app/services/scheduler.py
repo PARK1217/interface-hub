@@ -10,6 +10,7 @@ from apscheduler.triggers.cron import CronTrigger
 from sqlalchemy import select
 
 from app.core.database import SessionLocal
+from app.core.time import KST
 from app.models import Interface
 
 log = logging.getLogger("noahub.scheduler")
@@ -19,7 +20,7 @@ _scheduler: AsyncIOScheduler | None = None
 def get_scheduler() -> AsyncIOScheduler:
     global _scheduler
     if _scheduler is None:
-        _scheduler = AsyncIOScheduler(timezone="UTC")
+        _scheduler = AsyncIOScheduler(timezone=KST)
     return _scheduler
 
 
@@ -56,7 +57,7 @@ def sync_jobs() -> None:
                 sched.remove_job(job.id)
         for jid, (interface_id, cron) in wanted.items():
             try:
-                trigger = CronTrigger.from_crontab(cron, timezone="UTC")
+                trigger = CronTrigger.from_crontab(cron, timezone=KST)
             except ValueError:
                 log.warning("invalid cron %r on interface %s", cron, interface_id)
                 continue

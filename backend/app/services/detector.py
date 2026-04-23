@@ -4,12 +4,13 @@ from __future__ import annotations
 
 import asyncio
 import logging
-from datetime import datetime, timedelta, timezone
+from datetime import timedelta
 
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.core.config import get_settings
+from app.core.time import now_kst
 from app.models import CallLog, Incident, Interface
 from app.models.call_log import CallStatus
 from app.models.incident import IncidentType
@@ -90,7 +91,7 @@ def evaluate_after_call(db: Session, itf: Interface, call: CallLog) -> None:
         )
 
     # 3) rolling failure rate
-    since = datetime.now(timezone.utc) - timedelta(minutes=ROLLING_WINDOW_MIN)
+    since = now_kst() - timedelta(minutes=ROLLING_WINDOW_MIN)
     recent = db.scalars(
         select(CallLog)
         .where(CallLog.interface_id == itf.id)
@@ -114,6 +115,6 @@ def evaluate_after_call(db: Session, itf: Interface, call: CallLog) -> None:
         for type_ in (IncidentType.SLOW_RESPONSE, IncidentType.HIGH_FAILURE_RATE):
             opened = _open_incident(db, itf.id, type_)
             if opened:
-                opened.resolved_at = datetime.now(timezone.utc)
+                opened.resolved_at = now_kst()
                 opened.resolution = "auto-resolved by healthy call"
                 db.commit()
