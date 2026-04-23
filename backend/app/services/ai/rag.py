@@ -1,116 +1,53 @@
-"""과거 장애 이력 기반 RAG — LangChain + FAISS (Phase 3).
+"""과거 장애 이력 기반 RAG — 멀티 프로바이더 LLM + TF-IDF 검색.
 
-파이프라인:
-  1. 각 (incident.summary + root_cause + resolution) 을 FAISS 디스크
-     인덱스에 임베딩.
-  2. 신규 질문이 들어오면 임베딩 → Top-K 유사 사례 검색.
-  3. 검색 결과 + 질문을 LLM 에 넘겨 "원인 가설 + 권장 조치" 한국어 생성.
+새 설계 (멀티 프로바이더):
+  1. **검색**: TF-IDF char n-gram (한국어 토크나이저 불필요, 의존성 가벼움)
+  2. **생성**: services/ai/llm.chat() 으로 위임 → AI_PROVIDER 환경변수에 따라
+     Mistral / Anthropic / HuggingFace / OpenAI 자동 선택
+  3. **Fallback**: 프로바이더 키 없거나 호출 실패 → 템플릿 응답 (mode='fallback')
 
-Fallback 모드: OPENAI_API_KEY 없으면 sklearn TfidfVectorizer (char n-gram
-2~4) 로 유사도 계산 + 템플릿 응답 생성. 한국어 토크나이저(konlpy 등) 없이도
-동작. 평가관이 자기 PC 에서 키 없이도 AI 페이지 시연 가능 (503 안 뜸).
+기존 LangChain+FAISS+OpenAIEmbeddings 경로는 제거 — 단일 프로바이더 의존
++ 임베딩 비용/설정 부담 큼. TF-IDF 도 한국어 보험사 incident 도메인 (사례
+30건 이내) 에선 충분히 정확.
 """
 
 from __future__ import annotations
 
 import logging
-import os
-from pathlib import Path
 
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from app.core.config import get_settings
-from app.models import Incident, VectorCase
+from app.models import Incident
 from app.models.incident import IncidentType
+from app.services.ai.llm import chat as llm_chat
+from app.services.ai.llm import current_model, current_provider, is_configured
 
 log = logging.getLogger("noahub.ai.rag")
-INDEX_DIR = Path("faiss_index")
 
 
 class RagService:
     def __init__(self, db: Session) -> None:
         self.db = db
-        self.settings = get_settings()
 
-    # ---- index maintenance --------------------------------------------------
-    def _ensure_deps(self) -> None:
-        try:
-            import faiss  # noqa: F401
-            import langchain_openai  # noqa: F401
-        except ImportError as e:
-            raise RuntimeError(f"AI dependencies missing: {e}") from e
+    # --- 공통: 과거 장애 검색 (TF-IDF) ---------------------------------------
+    def _retrieve(self, question: str, top_k: int) -> tuple[list[Incident], list[dict]]:
+        """질문으로 관련 incident Top-K 를 TF-IDF char n-gram 매칭으로 검색.
 
-    def reindex(self) -> int:
-        """Rebuild the FAISS index from all resolved incidents. Returns count."""
-        self._ensure_deps()
-        if not self.settings.openai_api_key:
-            raise RuntimeError("OPENAI_API_KEY is not set")
-        os.environ["OPENAI_API_KEY"] = self.settings.openai_api_key
-        from langchain_community.vectorstores import FAISS
-        from langchain_core.documents import Document
-        from langchain_openai import OpenAIEmbeddings
-
-        rows = self.db.scalars(
-            select(Incident).where(Incident.resolved_at.is_not(None))
-        ).all()
-        docs = [
-            Document(
-                page_content=f"{r.summary}\n원인:{r.root_cause or ''}\n조치:{r.resolution or ''}",
-                metadata={"incident_id": r.id, "type": r.type.value},
-            )
-            for r in rows
-        ]
-        if not docs:
-            return 0
-        emb = OpenAIEmbeddings(model=self.settings.embedding_model)
-        store = FAISS.from_documents(docs, emb)
-        INDEX_DIR.mkdir(parents=True, exist_ok=True)
-        store.save_local(str(INDEX_DIR))
-
-        # mirror metadata in vector_cases for downstream joins
-        self.db.query(VectorCase).delete()
-        for i, r in enumerate(rows):
-            self.db.add(
-                VectorCase(
-                    incident_id=r.id,
-                    faiss_id=i,
-                    summary=r.summary,
-                    resolution_text=r.resolution,
-                    embedding_model=self.settings.embedding_model,
-                )
-            )
-        self.db.commit()
-        return len(docs)
-
-    # ---- query --------------------------------------------------------------
-    def ask_fallback(self, question: str, top_k: int = 3) -> dict:
-        """LLM 없이 동작하는 fallback — TF-IDF char n-gram 으로 과거 장애 검색.
-
-        반환 shape 은 ``ask()`` 와 완전 동일하게 맞춰서 라우트/프론트엔드가
-        mode 필드만 보고 분기 가능. char n-gram (2~4) 사용해서 한국어
-        토크나이저 (konlpy/mecab 등 무거운 의존성) 없이도 유의미한 유사도
-        계산 가능. 예: "KIDI 5xx" 질문 → "KIDI 5xx 다발" 사례 매칭.
+        반환: (Incident 객체 리스트, 응답용 dict 리스트)
         """
         incidents = self.db.scalars(
             select(Incident).where(Incident.resolved_at.is_not(None))
         ).all()
         if not incidents:
-            return {
-                "mode": "fallback",
-                "answer": "분석할 과거 장애 이력이 아직 없습니다. 장애 발생 후 다시 시도하세요.",
-                "similar_cases": [],
-            }
+            return [], []
 
         try:
             from sklearn.feature_extraction.text import TfidfVectorizer
             from sklearn.metrics.pairwise import cosine_similarity
         except ImportError:
-            return {
-                "mode": "fallback",
-                "answer": "scikit-learn이 설치되어 있지 않아 fallback도 사용할 수 없습니다.",
-                "similar_cases": [],
-            }
+            log.warning("scikit-learn 미설치 — 빈 결과 반환")
+            return [], []
 
         docs = [
             f"{r.summary}\n원인:{r.root_cause or ''}\n조치:{r.resolution or ''}"
@@ -119,11 +56,12 @@ class RagService:
         vec = TfidfVectorizer(analyzer="char_wb", ngram_range=(2, 4), min_df=1)
         matrix = vec.fit_transform([*docs, question])
         sims = cosine_similarity(matrix[-1], matrix[:-1])[0]
-
         order = sims.argsort()[::-1][:top_k]
         cases = []
+        picked = []
         for i in order:
             inc = incidents[i]
+            picked.append(inc)
             cases.append(
                 {
                     "incident_id": inc.id,
@@ -132,10 +70,15 @@ class RagService:
                     "score": float(sims[i]),
                 }
             )
+        return picked, cases
 
+    # --- Fallback: 템플릿 응답 ------------------------------------------------
+    def _template_answer(self, cases: list[dict]) -> str:
+        if not cases:
+            return "분석할 과거 장애 이력이 아직 없습니다. 장애 발생 후 다시 시도하세요."
         top = cases[0]
-        answer_lines = [
-            "[Fallback 모드 — OpenAI 키 없음, TF-IDF 키워드 유사도 매칭]",
+        lines = [
+            "[Fallback 모드 — LLM 미설정, TF-IDF 키워드 유사도 매칭]",
             "",
             f"가장 유사한 과거 사례 (유사도 {top['score']:.2f}):",
             top["content"],
@@ -146,44 +89,77 @@ class RagService:
             "  · 동일 root cause로 판명되면 위 사례의 resolution 그대로 적용 가능",
         ]
         if len(cases) > 1:
-            answer_lines.append("")
-            answer_lines.append(f"추가 후보: {len(cases) - 1}건 더 있음 (아래 카드 참조)")
+            lines.append("")
+            lines.append(f"추가 후보: {len(cases) - 1}건 더 있음 (아래 카드 참조)")
+        return "\n".join(lines)
+
+    # --- 메인 진입점 ---------------------------------------------------------
+    def ask_fallback(self, question: str, top_k: int = 3) -> dict:
+        """LLM 없이 TF-IDF + 템플릿. 호환성 위해 유지 — 라우트는 ask() 우선."""
+        _, cases = self._retrieve(question, top_k)
         return {
             "mode": "fallback",
-            "answer": "\n".join(answer_lines),
+            "provider": "fallback",
+            "model": None,
+            "answer": self._template_answer(cases),
             "similar_cases": cases,
         }
 
-    def ask(self, question: str, top_k: int = 3) -> dict:
-        self._ensure_deps()
-        if not self.settings.openai_api_key:
-            raise RuntimeError("OPENAI_API_KEY is not set")
-        os.environ["OPENAI_API_KEY"] = self.settings.openai_api_key
-        from langchain_community.vectorstores import FAISS
-        from langchain_openai import ChatOpenAI, OpenAIEmbeddings
+    async def ask(self, question: str, top_k: int = 3) -> dict:
+        """검색 + (가능하면) LLM 생성, 아니면 fallback.
 
-        if not INDEX_DIR.exists():
-            raise RuntimeError("FAISS index not built yet — call reindex() first")
-        emb = OpenAIEmbeddings(model=self.settings.embedding_model)
-        store = FAISS.load_local(str(INDEX_DIR), emb, allow_dangerous_deserialization=True)
-        hits = store.similarity_search_with_score(question, k=top_k)
-        cases = [
-            {
-                "incident_id": h.metadata.get("incident_id"),
-                "type": h.metadata.get("type"),
-                "content": h.page_content,
-                "score": float(score),
+        프로바이더는 ``AI_PROVIDER`` 환경변수로 결정 (mistral/anthropic/
+        huggingface/openai). 키 없거나 호출 실패 → fallback.
+        """
+        _, cases = self._retrieve(question, top_k)
+        if not cases:
+            return self.ask_fallback(question, top_k)
+
+        if not is_configured():
+            return {
+                "mode": "fallback",
+                "provider": "fallback",
+                "model": None,
+                "answer": self._template_answer(cases),
+                "similar_cases": cases,
             }
-            for h, score in hits
-        ]
 
-        llm = ChatOpenAI(model=self.settings.llm_model, temperature=0.2)
         context = "\n\n---\n\n".join(c["content"] for c in cases)
-        prompt = (
-            "당신은 보험사 인터페이스 운영 어시스턴트입니다. 아래 과거 장애 사례를 참고하여 "
-            "신규 장애의 원인 가설과 권장 조치를 한국어로 제시하세요.\n\n"
-            f"[과거 사례]\n{context}\n\n[신규 질문]\n{question}\n\n"
-            "응답 형식:\n1) 원인 가설 (Top-1)\n2) 추가 점검 항목\n3) 권장 조치 절차"
+        system = (
+            "당신은 보험사 인터페이스 운영 어시스턴트입니다. "
+            "운영자에게 한국어로 명확하고 실용적인 답변을 제공하세요."
         )
-        answer = llm.invoke(prompt).content
-        return {"mode": "llm", "answer": answer, "similar_cases": cases}
+        prompt = (
+            f"[과거 장애 사례 Top-{len(cases)}]\n{context}\n\n"
+            f"[신규 장애 질문]\n{question}\n\n"
+            "위 과거 사례를 참고하여 다음 형식으로 답변해주세요:\n"
+            "1) 원인 가설 (Top-1)\n"
+            "2) 추가 점검 항목\n"
+            "3) 권장 조치 절차"
+        )
+        res = await llm_chat(prompt, system=system)
+        if res is None:
+            # LLM 호출 실패 → fallback 템플릿
+            return {
+                "mode": "fallback",
+                "provider": "fallback",
+                "model": None,
+                "answer": self._template_answer(cases) + "\n\n(주의: LLM 호출 실패로 fallback)",
+                "similar_cases": cases,
+            }
+        return {
+            "mode": "llm",
+            "provider": res.provider,
+            "model": res.model,
+            "answer": res.content,
+            "similar_cases": cases,
+        }
+
+
+# 라우트에서 빠르게 현재 상태 확인용
+def llm_status() -> dict:
+    return {
+        "configured": is_configured(),
+        "provider": current_provider(),
+        "model": current_model(),
+    }

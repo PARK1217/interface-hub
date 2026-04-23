@@ -25,10 +25,22 @@ class Settings(BaseSettings):
     alert_email_from: str = "alert@noahub.local"
     alert_email_to: str | None = None
 
-    # AI (Phase 3)
+    # AI 프로바이더 (Phase 3) — 멀티 지원
+    # AI_PROVIDER 로 선택: 'fallback' | 'mistral' | 'anthropic' | 'huggingface' | 'openai'
+    # 'fallback' 또는 해당 프로바이더 키가 없으면 TF-IDF fallback 모드.
+    ai_provider: str = "fallback"
+    ai_model: str | None = None  # 비우면 프로바이더별 기본 모델 사용
+    ai_max_tokens: int = 2000
+
+    # 프로바이더별 API 키
     openai_api_key: str | None = None
+    anthropic_api_key: str | None = None
+    mistral_api_key: str | None = None
+    huggingface_api_key: str | None = None
+
+    # 임베딩 (LangChain+FAISS RAG 사용 시 — 현재는 TF-IDF 기본)
     embedding_model: str = "text-embedding-3-small"
-    llm_model: str = "gpt-4o-mini"
+    llm_model: str = "gpt-4o-mini"  # legacy — ai_model 우선
 
     # Detection thresholds (defaults; per-interface overrides live in DB)
     default_response_ms_threshold: int = 3000

@@ -118,7 +118,7 @@ export const Interfaces = {
   list: (params: Record<string, unknown> = {}) => api.get<InterfaceItem[]>('/interfaces', { params }),
   create: (payload: Partial<InterfaceItem> & { auth_secret?: string }) =>
     api.post<InterfaceItem>('/interfaces', payload),
-  update: (id: number, payload: Partial<InterfaceItem> & { auth_secret?: string }) =>
+  update: (id: number, payload: Partial<InterfaceItem> & { auth_secret?: string; secret_change_reason?: string }) =>
     api.patch<InterfaceItem>(`/interfaces/${id}`, payload),
   remove: (id: number) => api.delete(`/interfaces/${id}`),
   restore: (id: number) => api.post<InterfaceItem>(`/interfaces/${id}/restore`),
@@ -127,6 +127,11 @@ export const Interfaces = {
     api.get<{ valid: boolean; error?: string; next_runs?: string[] }>(
       '/interfaces/cron-preview',
       { params: { expression, count } },
+    ),
+  revealSecret: (id: number, reason: string) =>
+    api.post<{ interface_id: number; interface_name: string; auth_type: string; secret: string }>(
+      `/interfaces/${id}/reveal-secret`,
+      { reason },
     ),
 };
 
@@ -208,6 +213,7 @@ export const Sla = {
 export const AI = {
   ask: (question: string, top_k = 3) => api.post('/ai/ask', { question, top_k }),
   anomaly: (interfaceId: number) => api.get(`/ai/anomaly/${interfaceId}`),
+  status: () => api.get<{ configured: boolean; provider: string; model: string | null }>('/ai/status'),
 };
 
 export interface PercentileRow {

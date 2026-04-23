@@ -47,6 +47,9 @@ class InterfaceUpdate(BaseModel):
     request_template: dict[str, Any] | None = None
     auth_type: AuthType | None = None
     auth_secret: str | None = None
+    # 시크릿 변경 시 필수 (개인정보보호법·내부 보안 감사 대응).
+    # 라우트에서 검증 — 시크릿 변경 안 하면 무시됨.
+    secret_change_reason: str | None = None
     schedule_cron: str | None = None
     enabled: bool | None = None
     response_ms_threshold: int | None = None
@@ -58,6 +61,17 @@ class InterfaceUpdate(BaseModel):
         if v and not croniter.is_valid(v):
             raise ValueError(f"invalid cron expression: {v}")
         return v
+
+
+class RevealSecretRequest(BaseModel):
+    reason: str  # 왜 시크릿을 보려는지 — 감사 로그에 영구 기록
+
+
+class RevealSecretResponse(BaseModel):
+    interface_id: int
+    interface_name: str
+    auth_type: AuthType
+    secret: str  # 평문 — 응답으로만 1회 노출. UI 에서 자동 숨김 권장.
 
 
 class InterfaceOut(InterfaceBase):

@@ -6,11 +6,17 @@ from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 from app.api.deps import get_current_user, get_db, require_role
-from app.core.security import encrypt_secret
+from app.core.security import decrypt_secret, encrypt_secret
 from app.core.time import now_kst
 from app.models import Interface, User, UserRole
 from app.models.interface import ProtocolType
-from app.schemas.interface import InterfaceCreate, InterfaceOut, InterfaceUpdate
+from app.schemas.interface import (
+    InterfaceCreate,
+    InterfaceOut,
+    InterfaceUpdate,
+    RevealSecretRequest,
+    RevealSecretResponse,
+)
 from app.services.audit import record_audit
 
 router = APIRouter(prefix="/interfaces", tags=["interfaces"])
@@ -124,28 +130,77 @@ def update_interface(
     if obj.deleted_at is not None:
         raise HTTPException(status.HTTP_400_BAD_REQUEST, "deleted interface — restore first")
     data = payload.model_dump(exclude_unset=True)
-    before_snapshot = {k: getattr(obj, k) for k in data if k != "auth_secret"}
     # 시크릿 변경 여부만 별도 추적 (값은 절대 감사 로그에 안 남김)
     secret = data.pop("auth_secret", None)
+    secret_reason = data.pop("secret_change_reason", None)
+    # 시크릿 변경 시 사유 필수 — 보안 감사 추적 가능하도록.
+    # 빈 문자열 ("") 로 시크릿을 지우는 케이스도 동일 정책 적용.
+    if secret is not None and not (secret_reason and secret_reason.strip()):
+        raise HTTPException(
+            status.HTTP_422_UNPROCESSABLE_ENTITY,
+            "시크릿을 변경하려면 변경 사유 (secret_change_reason) 가 필요합니다.",
+        )
+    before_snapshot = {k: getattr(obj, k) for k in data if k != "auth_secret"}
     for k, v in data.items():
         setattr(obj, k, v)
     if secret is not None:
         obj.auth_secret = encrypt_secret(secret) if secret else None
     db.commit()
     db.refresh(obj)
-    record_audit(
-        db, actor=actor, action="interface.update",
-        resource_type="interface", resource_id=obj.id,
-        before=before_snapshot, after={k: v for k, v in data.items()},
-        request=request,
-    )
+    if data:  # 시크릿 외에 변경 필드가 있을 때만 일반 update 감사
+        record_audit(
+            db, actor=actor, action="interface.update",
+            resource_type="interface", resource_id=obj.id,
+            before=before_snapshot, after={k: v for k, v in data.items()},
+            request=request,
+        )
     if secret is not None:
+        # 사유는 before_value 에 보존. 값(secret)은 절대 안 남김.
         record_audit(
             db, actor=actor, action="interface.secret_changed",
             resource_type="interface", resource_id=obj.id,
+            before={"reason": secret_reason},
+            after={"cleared": secret == ""},
             request=request,
         )
     return _to_out(obj)
+
+
+@router.post("/{interface_id}/reveal-secret", response_model=RevealSecretResponse)
+def reveal_secret(
+    interface_id: int,
+    payload: RevealSecretRequest,
+    request: Request,
+    db: Session = Depends(get_db),
+    actor: User = Depends(require_role([UserRole.ADMIN])),
+) -> RevealSecretResponse:
+    """저장된 시크릿 평문 1회 조회. ADMIN 만 가능, 사유 필수, 모든 조회 audit.
+
+    개인정보보호법·내부 보안 통제 대응 — "왜 시크릿을 봤느냐" 질문에
+    누가·언제·왜 답변 가능해야 함.
+    """
+    if not (payload.reason and payload.reason.strip()):
+        raise HTTPException(
+            status.HTTP_422_UNPROCESSABLE_ENTITY,
+            "시크릿 조회 사유는 필수입니다.",
+        )
+    obj = db.get(Interface, interface_id)
+    if not obj:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "interface not found")
+    if not obj.auth_secret:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "이 인터페이스에 저장된 시크릿이 없습니다.")
+    plain = decrypt_secret(obj.auth_secret)
+    record_audit(
+        db, actor=actor, action="interface.secret_view",
+        resource_type="interface", resource_id=obj.id,
+        before={"reason": payload.reason}, request=request,
+    )
+    return RevealSecretResponse(
+        interface_id=obj.id,
+        interface_name=obj.name,
+        auth_type=obj.auth_type,
+        secret=plain,
+    )
 
 
 @router.delete("/{interface_id}", status_code=status.HTTP_204_NO_CONTENT, response_class=Response)

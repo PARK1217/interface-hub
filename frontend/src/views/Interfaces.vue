@@ -143,7 +143,7 @@
               title="실행"
               @click="run(item)"
             />
-            <!-- ✏️ 수정 / 📦 보관: ADMIN 만 -->
+            <!-- ✏️ 수정 / 🔓 시크릿 조회 / 📦 보관: ADMIN 만 -->
             <v-btn
               v-if="auth.isAdmin"
               icon="mdi-pencil"
@@ -151,6 +151,15 @@
               size="small"
               title="수정"
               @click="openEdit(item)"
+            />
+            <v-btn
+              v-if="auth.isAdmin && item.has_secret"
+              icon="mdi-key-outline"
+              variant="text"
+              size="small"
+              color="warning"
+              title="시크릿 조회 (사유 기록됨)"
+              @click="openReveal(item)"
             />
             <v-btn
               v-if="auth.isAdmin"
@@ -385,6 +394,21 @@
             </v-col>
           </v-row>
 
+          <!-- 시크릿 변경 사유 — 수정 모드에서 시크릿 입력 시 강제 -->
+          <v-text-field
+            v-if="form.id && form.auth_secret"
+            v-model="form.secret_change_reason"
+            label="시크릿 변경 사유 *"
+            density="comfortable"
+            variant="outlined"
+            prepend-inner-icon="mdi-comment-text-outline"
+            placeholder="예: KIDI 토큰 만료로 재발급, 보안 정책상 분기별 교체"
+            :error="!!form.auth_secret && !form.secret_change_reason"
+            hint="개인정보보호법·내부 보안 감사 대응을 위해 사유 기록 필수"
+            persistent-hint
+            class="mt-2"
+          />
+
           <div class="text-overline text-medium-emphasis mb-2 mt-4">임계값 (선택)</div>
           <v-row dense>
             <v-col cols="12" md="6">
@@ -436,6 +460,62 @@
           <v-btn variant="text" @click="dialog = false">취소</v-btn>
           <v-btn color="primary" variant="elevated" prepend-icon="mdi-content-save-outline" @click="save" :loading="saving">
             저장
+          </v-btn>
+        </v-card-actions>
+      </v-card>
+    </v-dialog>
+
+    <!-- 시크릿 조회 다이얼로그 — 사유 입력 → 평문 1회 노출 -->
+    <v-dialog v-model="revealDialog" max-width="540">
+      <v-card v-if="revealTarget">
+        <v-card-title class="d-flex align-center">
+          <v-icon icon="mdi-key-variant" color="warning" class="mr-2" />
+          시크릿 조회 — {{ revealTarget.name }}
+        </v-card-title>
+        <v-card-text>
+          <v-alert v-if="!revealedSecret" type="warning" variant="tonal" density="compact" class="mb-3">
+            <strong>조회 사유는 감사 로그에 영구 기록됩니다.</strong>
+            누가·언제·왜 시크릿을 봤는지 추적 가능해야 보안 감사 통과.
+          </v-alert>
+          <v-alert v-else type="error" variant="tonal" density="compact" class="mb-3">
+            <strong>이 화면을 닫으면 다시 볼 수 없습니다.</strong> 필요한 곳에 즉시
+            복사·전달하세요.
+          </v-alert>
+
+          <v-text-field
+            v-if="!revealedSecret"
+            v-model="revealReason"
+            label="조회 사유 *"
+            placeholder="예: 운영 사고 분석을 위해 KIDI 시크릿 확인"
+            density="comfortable"
+            variant="outlined"
+            prepend-inner-icon="mdi-comment-text-outline"
+            autofocus
+          />
+
+          <v-text-field
+            v-if="revealedSecret"
+            :model-value="revealedSecret"
+            label="시크릿 (평문)"
+            readonly
+            density="comfortable"
+            variant="outlined"
+            append-inner-icon="mdi-content-copy"
+            @click:append-inner="copyRevealed"
+          />
+        </v-card-text>
+        <v-card-actions>
+          <v-spacer />
+          <v-btn @click="closeReveal">{{ revealedSecret ? '확인' : '취소' }}</v-btn>
+          <v-btn
+            v-if="!revealedSecret"
+            color="warning"
+            variant="elevated"
+            :loading="revealBusy"
+            :disabled="!revealReason.trim()"
+            @click="confirmReveal"
+          >
+            조회
           </v-btn>
         </v-card-actions>
       </v-card>
@@ -713,6 +793,7 @@ function openCreate() {
     schedule_cron: '',
     auth_type: 'NONE',
     auth_secret: '',
+    secret_change_reason: '',
     response_ms_threshold: null,
     failure_rate_threshold: null,
     enabled: true,
@@ -722,18 +803,29 @@ function openCreate() {
 }
 
 function openEdit(item: InterfaceItem) {
-  Object.assign(form, item, { auth_secret: '' });
+  Object.assign(form, item, { auth_secret: '', secret_change_reason: '' });
   parseCron(item.schedule_cron ?? '');
   dialog.value = true;
 }
 
 async function save() {
+  // 클라이언트 사전 검증 — 시크릿 변경 시 사유 필수
+  if (form.id && form.auth_secret && !form.secret_change_reason?.trim()) {
+    notify('시크릿을 변경하려면 변경 사유를 입력해주세요.', 'error');
+    return;
+  }
   saving.value = true;
   try {
     const payload = { ...form };
-    if (!payload.auth_secret) delete payload.auth_secret;
+    if (!payload.auth_secret) {
+      delete payload.auth_secret;
+      delete payload.secret_change_reason;
+    }
     if (form.id) await Interfaces.update(form.id, payload);
-    else await Interfaces.create(payload);
+    else {
+      delete payload.secret_change_reason;
+      await Interfaces.create(payload);
+    }
     notify('저장 완료');
     dialog.value = false;
     await load();
@@ -769,6 +861,53 @@ async function restore(item: InterfaceItem) {
   await Interfaces.restore(item.id);
   notify(`${item.name} 복원됨`);
   await load();
+}
+
+// --- 시크릿 조회 ----------------------------------------------------------
+const revealDialog = ref(false);
+const revealTarget = ref<InterfaceItem | null>(null);
+const revealReason = ref('');
+const revealedSecret = ref('');
+const revealBusy = ref(false);
+
+function openReveal(item: InterfaceItem) {
+  revealTarget.value = item;
+  revealReason.value = '';
+  revealedSecret.value = '';
+  revealDialog.value = true;
+}
+
+async function confirmReveal() {
+  if (!revealTarget.value || !revealReason.value.trim()) return;
+  revealBusy.value = true;
+  try {
+    const res = await Interfaces.revealSecret(revealTarget.value.id, revealReason.value.trim());
+    revealedSecret.value = res.data.secret;
+  } catch (e: any) {
+    notify(e?.response?.data?.detail ?? '조회 실패', 'error');
+  } finally {
+    revealBusy.value = false;
+  }
+}
+
+async function copyRevealed() {
+  if (!revealedSecret.value) return;
+  try {
+    await navigator.clipboard.writeText(revealedSecret.value);
+    notify('클립보드에 복사됨');
+  } catch {
+    notify('복사 실패', 'error');
+  }
+}
+
+function closeReveal() {
+  revealDialog.value = false;
+  // 평문은 메모리에서도 즉시 제거 (브라우저 dev tools 노출 최소화)
+  setTimeout(() => {
+    revealedSecret.value = '';
+    revealReason.value = '';
+    revealTarget.value = null;
+  }, 200);
 }
 
 async function run(item: InterfaceItem) {

@@ -4,19 +4,24 @@
       <h2 class="text-h5">AI 분석 어시스턴트</h2>
       <v-spacer />
       <v-chip
-        v-if="lastMode"
-        :color="lastMode === 'llm' ? 'success' : 'info'"
+        v-if="aiStatus"
+        :color="aiStatus.configured ? 'success' : 'info'"
         variant="tonal"
         size="small"
-        :prepend-icon="lastMode === 'llm' ? 'mdi-robot-happy' : 'mdi-text-search'"
+        :prepend-icon="aiStatus.configured ? 'mdi-robot-happy' : 'mdi-text-search'"
       >
-        {{ lastMode === 'llm' ? 'LLM 모드 (OpenAI)' : 'Fallback 모드 (TF-IDF)' }}
+        {{ aiStatus.configured ? `LLM · ${aiStatus.provider}` : 'Fallback (TF-IDF)' }}
+        <span v-if="aiStatus.model" class="ml-1 text-caption">({{ aiStatus.model }})</span>
       </v-chip>
     </div>
 
-    <v-alert v-if="lastMode === 'fallback'" type="info" variant="tonal" density="compact" class="mb-4">
-      OpenAI 키 미설정 → 키워드 매칭(TF-IDF)으로 과거 장애 사례를 검색해 답변합니다.
-      <code>backend/.env</code> 의 <code>OPENAI_API_KEY</code> 를 채우면 자동으로 LLM 모드로 전환됩니다.
+    <v-alert v-if="aiStatus && !aiStatus.configured" type="info" variant="tonal" density="compact" class="mb-4">
+      LLM 키 미설정 → 키워드 매칭(TF-IDF)으로 과거 장애 사례 검색·템플릿 응답.
+      <code>backend/.env</code> 의 <code>AI_PROVIDER</code> + 해당 키 (Mistral/Anthropic/
+      HuggingFace/OpenAI) 를 채우면 자동으로 LLM 모드로 전환됩니다.
+    </v-alert>
+    <v-alert v-else-if="lastMode === 'fallback'" type="warning" variant="tonal" density="compact" class="mb-4">
+      LLM 호출 실패 → fallback 응답으로 대체. 네트워크/키/할당량 확인 필요.
     </v-alert>
 
     <v-card class="mb-4">
@@ -61,7 +66,7 @@
           size="x-small"
           :color="lastMode === 'llm' ? 'success' : 'info'"
         >
-          {{ lastMode }}
+          {{ lastMode }}{{ lastProvider ? ` · ${lastProvider}` : '' }}
         </v-chip>
       </v-card-title>
       <v-card-text style="white-space: pre-wrap">{{ answer }}</v-card-text>
@@ -87,7 +92,7 @@
 </template>
 
 <script setup lang="ts">
-import { reactive, ref } from 'vue';
+import { onMounted, reactive, ref } from 'vue';
 import { AI } from '@/api/client';
 
 const examples = [
@@ -101,8 +106,19 @@ const question = ref('');
 const answer = ref('');
 const cases = ref<{ incident_id: number; type: string; content: string; score: number }[]>([]);
 const lastMode = ref<'llm' | 'fallback' | null>(null);
+const lastProvider = ref<string | null>(null);
 const loading = ref(false);
 const snack = reactive({ show: false, text: '', color: 'error' });
+
+const aiStatus = ref<{ configured: boolean; provider: string; model: string | null } | null>(null);
+
+onMounted(async () => {
+  try {
+    aiStatus.value = (await AI.status()).data;
+  } catch {
+    /* ignore */
+  }
+});
 
 function scoreColor(s: number) {
   if (s > 0.5) return 'success';
@@ -117,6 +133,7 @@ async function ask() {
     answer.value = res.data.answer;
     cases.value = res.data.similar_cases;
     lastMode.value = (res.data.mode as 'llm' | 'fallback') ?? 'llm';
+    lastProvider.value = res.data.provider ?? null;
   } catch (e: any) {
     Object.assign(snack, {
       show: true,
