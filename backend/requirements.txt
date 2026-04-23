@@ -1,0 +1,28 @@
+fastapi==0.115.6
+uvicorn[standard]==0.34.0
+pydantic==2.10.4
+pydantic-settings==2.7.1
+SQLAlchemy==2.0.36
+psycopg[binary]==3.2.3
+alembic==1.14.0
+redis==5.2.1
+httpx==0.28.1
+zeep==4.3.1
+APScheduler==3.11.0
+cryptography==44.0.0
+python-multipart==0.0.20
+websockets==14.1
+croniter==5.0.1
+# Phase 2
+aiosmtplib==3.0.2
+# Phase 3 (optional, AI)
+scikit-learn==1.6.0
+pandas==2.2.3
+numpy==2.2.1
+faiss-cpu==1.9.0
+langchain==0.3.13
+langchain-openai==0.2.14
+# dev
+pytest==8.3.4
+pytest-asyncio==0.25.0
+ruff==0.8.4

@@ -144,6 +144,17 @@ ENV/
 env.bak/
 venv.bak/
 
+# Node / Vue
+node_modules/
+dist/
+.vite/
+*.log
+.DS_Store
+
+# Project temp
+_extract_pptx.py
+faiss_index/
+
 # Spyder project settings
 .spyderproject
 .spyproject

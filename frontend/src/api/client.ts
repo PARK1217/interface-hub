@@ -1,0 +1,95 @@
+import axios from 'axios';
+
+export const api = axios.create({
+  baseURL: '/api',
+  timeout: 15000,
+});
+
+export interface InterfaceItem {
+  id: number;
+  name: string;
+  description?: string | null;
+  organization?: string | null;
+  protocol: 'REST' | 'SOAP' | 'FTP' | 'MQ';
+  endpoint: string;
+  method: string;
+  headers?: Record<string, string> | null;
+  request_template?: Record<string, unknown> | null;
+  auth_type: 'NONE' | 'BASIC' | 'API_KEY' | 'OAUTH2' | 'BEARER';
+  schedule_cron?: string | null;
+  enabled: boolean;
+  has_secret?: boolean;
+  response_ms_threshold?: number | null;
+  failure_rate_threshold?: number | null;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface CallLogItem {
+  id: number;
+  interface_id: number;
+  status: string;
+  http_status: number | null;
+  duration_ms: number;
+  error_message: string | null;
+  triggered_by: string;
+  called_at: string;
+  request?: Record<string, unknown> | null;
+  response?: Record<string, unknown> | null;
+}
+
+export interface IncidentItem {
+  id: number;
+  interface_id: number;
+  type: string;
+  severity: string;
+  summary: string;
+  root_cause: string | null;
+  resolution: string | null;
+  detected_at: string;
+  resolved_at: string | null;
+}
+
+export interface SlaReportRow {
+  interface_id: number;
+  interface_name: string;
+  uptime_pct: number;
+  avg_response_ms: number;
+  target_uptime: number;
+  target_response_ms: number;
+  meets_uptime: boolean;
+  meets_response: boolean;
+}
+
+export const Interfaces = {
+  list: () => api.get<InterfaceItem[]>('/interfaces'),
+  create: (payload: Partial<InterfaceItem> & { auth_secret?: string }) =>
+    api.post<InterfaceItem>('/interfaces', payload),
+  update: (id: number, payload: Partial<InterfaceItem> & { auth_secret?: string }) =>
+    api.patch<InterfaceItem>(`/interfaces/${id}`, payload),
+  remove: (id: number) => api.delete(`/interfaces/${id}`),
+  execute: (id: number) => api.post<CallLogItem>(`/interfaces/${id}/execute`),
+};
+
+export const CallLogs = {
+  search: (params: Record<string, unknown> = {}) => api.get<CallLogItem[]>('/call-logs', { params }),
+  stats: (params: Record<string, unknown> = {}) => api.get('/call-logs/stats', { params }),
+  timeseries: (params: Record<string, unknown> = {}) => api.get('/call-logs/timeseries', { params }),
+};
+
+export const Incidents = {
+  list: (params: Record<string, unknown> = {}) => api.get<IncidentItem[]>('/incidents', { params }),
+  resolve: (id: number, resolution?: string) =>
+    api.post<IncidentItem>(`/incidents/${id}/resolve`, null, { params: { resolution } }),
+};
+
+export const Sla = {
+  report: (days = 30) => api.get<SlaReportRow[]>('/sla/report', { params: { days } }),
+  upsertTarget: (payload: { interface_id: number; uptime_target: number; response_ms_target: number }) =>
+    api.post('/sla/targets', payload),
+};
+
+export const AI = {
+  ask: (question: string, top_k = 3) => api.post('/ai/ask', { question, top_k }),
+  anomaly: (interfaceId: number) => api.get(`/ai/anomaly/${interfaceId}`),
+};
