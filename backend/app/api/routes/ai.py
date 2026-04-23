@@ -5,6 +5,7 @@ from pydantic import BaseModel
 from sqlalchemy.orm import Session
 
 from app.api.deps import get_db
+from app.core.config import get_settings
 from app.services.ai.anomaly import score_anomalies
 from app.services.ai.rag import RagService
 
@@ -20,6 +21,7 @@ class AskRequest(BaseModel):
 class AskResponse(BaseModel):
     answer: str
     similar_cases: list[dict]
+    mode: str = "llm"  # "llm" | "fallback"
 
 
 class AnomalyResponse(BaseModel):
@@ -30,11 +32,14 @@ class AnomalyResponse(BaseModel):
 
 @router.post("/ask", response_model=AskResponse)
 def ask(payload: AskRequest, db: Session = Depends(get_db)) -> AskResponse:
+    rag = RagService(db)
+    # No key → straight to fallback. Key present but real RAG raises (no index, etc.) → also fall back.
+    if not get_settings().openai_api_key:
+        return AskResponse(**rag.ask_fallback(payload.question, top_k=payload.top_k))
     try:
-        rag = RagService(db)
         return AskResponse(**rag.ask(payload.question, top_k=payload.top_k))
-    except RuntimeError as e:
-        raise HTTPException(503, str(e)) from e
+    except RuntimeError:
+        return AskResponse(**rag.ask_fallback(payload.question, top_k=payload.top_k))
 
 
 @router.get("/anomaly/{interface_id}", response_model=AnomalyResponse)
