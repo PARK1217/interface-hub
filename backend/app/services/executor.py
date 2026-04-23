@@ -94,8 +94,18 @@ async def _exec_soap(itf: Interface) -> tuple[int | None, dict | None, Exception
 
 
 async def execute_interface(
-    itf: Interface, db: Session, *, triggered_by: str = "manual"
+    itf: Interface,
+    db: Session,
+    *,
+    triggered_by: str = "manual",
+    parent_log: CallLog | None = None,
 ) -> CallLog:
+    """Execute an interface once, persist a CallLog row, broadcast & detect.
+
+    When ``parent_log`` is provided, the new row is linked as a retry of that
+    log: ``parent_log_id`` set, ``retry_count`` incremented from the parent,
+    ``triggered_by='reprocess'``, and the parent is flagged ``is_reprocessed``.
+    """
     started = time.perf_counter()
     http_status: int | None = None
     response: dict | None = None
@@ -125,9 +135,13 @@ async def execute_interface(
         http_status=http_status,
         duration_ms=duration_ms,
         error_message=str(exc) if exc else None,
-        triggered_by=triggered_by,
+        triggered_by="reprocess" if parent_log is not None else triggered_by,
+        parent_log_id=parent_log.id if parent_log is not None else None,
+        retry_count=(parent_log.retry_count + 1) if parent_log is not None else 0,
     )
     db.add(log_row)
+    if parent_log is not None and not parent_log.is_reprocessed:
+        parent_log.is_reprocessed = True
     db.commit()
     db.refresh(log_row)
 

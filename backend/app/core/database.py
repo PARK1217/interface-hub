@@ -1,9 +1,12 @@
+import logging
 from collections.abc import Generator
 
-from sqlalchemy import create_engine
+from sqlalchemy import create_engine, text
 from sqlalchemy.orm import DeclarativeBase, Session, sessionmaker
 
 from .config import get_settings
+
+log = logging.getLogger("noahub.db")
 
 _settings = get_settings()
 
@@ -33,3 +36,25 @@ def init_db() -> None:
     from app import models  # noqa: F401  (ensure models are imported)
 
     Base.metadata.create_all(bind=engine)
+    _apply_demo_migrations()
+
+
+# Demo-only inline migrations. Replace with Alembic for production.
+_DEMO_MIGRATIONS: list[str] = [
+    "ALTER TABLE call_logs ADD COLUMN IF NOT EXISTS parent_log_id INTEGER REFERENCES call_logs(id) ON DELETE SET NULL",
+    "ALTER TABLE call_logs ADD COLUMN IF NOT EXISTS retry_count INTEGER NOT NULL DEFAULT 0",
+    "ALTER TABLE call_logs ADD COLUMN IF NOT EXISTS is_reprocessed BOOLEAN NOT NULL DEFAULT FALSE",
+    "CREATE INDEX IF NOT EXISTS ix_call_logs_parent_log_id ON call_logs(parent_log_id)",
+    "CREATE INDEX IF NOT EXISTS ix_call_logs_is_reprocessed ON call_logs(is_reprocessed)",
+]
+
+
+def _apply_demo_migrations() -> None:
+    if engine.dialect.name != "postgresql":
+        return  # IF NOT EXISTS on ADD COLUMN is Postgres-specific
+    with engine.begin() as conn:
+        for stmt in _DEMO_MIGRATIONS:
+            try:
+                conn.execute(text(stmt))
+            except Exception as e:  # noqa: BLE001
+                log.warning("demo migration skipped: %s — %s", stmt, e)

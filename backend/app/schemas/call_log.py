@@ -3,7 +3,7 @@ from __future__ import annotations
 from datetime import datetime
 from typing import Any
 
-from pydantic import BaseModel, ConfigDict
+from pydantic import BaseModel, ConfigDict, Field
 
 from app.models.call_log import CallStatus
 
@@ -21,6 +21,25 @@ class CallLogOut(BaseModel):
     error_message: str | None = None
     triggered_by: str
     called_at: datetime
+    parent_log_id: int | None = None
+    retry_count: int = 0
+    is_reprocessed: bool = False
+
+
+class BulkRetryRequest(BaseModel):
+    interface_id: int | None = None
+    status: CallStatus | None = None
+    since: datetime | None = None
+    until: datetime | None = None
+    only_failed: bool = True
+    skip_already_reprocessed: bool = True
+    max_count: int = Field(50, ge=1, le=500)
+
+
+class BulkRetryResponse(BaseModel):
+    submitted: int
+    skipped: int
+    new_log_ids: list[int]
 
 
 class CallLogStats(BaseModel):

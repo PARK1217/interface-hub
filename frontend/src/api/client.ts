@@ -36,6 +36,25 @@ export interface CallLogItem {
   called_at: string;
   request?: Record<string, unknown> | null;
   response?: Record<string, unknown> | null;
+  parent_log_id?: number | null;
+  retry_count?: number;
+  is_reprocessed?: boolean;
+}
+
+export interface BulkRetryRequest {
+  interface_id?: number | null;
+  status?: string | null;
+  since?: string | null;
+  until?: string | null;
+  only_failed?: boolean;
+  skip_already_reprocessed?: boolean;
+  max_count?: number;
+}
+
+export interface BulkRetryResponse {
+  submitted: number;
+  skipped: number;
+  new_log_ids: number[];
 }
 
 export interface IncidentItem {
@@ -75,6 +94,10 @@ export const CallLogs = {
   search: (params: Record<string, unknown> = {}) => api.get<CallLogItem[]>('/call-logs', { params }),
   stats: (params: Record<string, unknown> = {}) => api.get('/call-logs/stats', { params }),
   timeseries: (params: Record<string, unknown> = {}) => api.get('/call-logs/timeseries', { params }),
+  retry: (id: number) => api.post<CallLogItem>(`/call-logs/${id}/retry`),
+  bulkRetry: (payload: BulkRetryRequest) =>
+    api.post<BulkRetryResponse>('/call-logs/bulk-retry', payload),
+  chain: (id: number) => api.get<CallLogItem[]>(`/call-logs/${id}/chain`),
 };
 
 export const Incidents = {
