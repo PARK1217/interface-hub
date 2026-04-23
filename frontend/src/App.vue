@@ -14,7 +14,7 @@
       <v-divider />
       <v-list density="comfortable" nav>
         <v-list-item
-          v-for="r in routes"
+          v-for="r in visibleRoutes"
           :key="r.path"
           :to="r.path"
           :prepend-icon="r.icon"
@@ -83,7 +83,19 @@ const routes = [
   { path: '/performance', title: '성능 관리', icon: 'mdi-speedometer' },
   { path: '/sla', title: 'SLA', icon: 'mdi-chart-line' },
   { path: '/ai', title: 'AI 분석', icon: 'mdi-robot-outline' },
+  // 감사 로그는 OPERATOR 에게는 메뉴 숨김 (감사관/관리자만)
+  { path: '/audit-logs', title: '감사 로그', icon: 'mdi-shield-search', auditorOnly: true },
+  // 사용자 관리는 ADMIN 만
+  { path: '/users', title: '사용자 관리', icon: 'mdi-account-group-outline', adminOnly: true },
 ];
+
+const visibleRoutes = computed(() =>
+  routes.filter((r) => {
+    if (r.adminOnly && auth.role !== 'ADMIN') return false;
+    if (r.auditorOnly && !(auth.role === 'ADMIN' || auth.role === 'VIEWER')) return false;
+    return true;
+  }),
+);
 
 const currentTitle = computed(() => (route.meta?.title as string) ?? 'NOA Interface Hub');
 

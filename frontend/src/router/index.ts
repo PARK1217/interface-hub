@@ -11,6 +11,16 @@ const routes = [
   { path: '/performance', component: () => import('@/views/Performance.vue'), meta: { title: '성능 관리' } },
   { path: '/sla', component: () => import('@/views/Sla.vue'), meta: { title: 'SLA' } },
   { path: '/ai', component: () => import('@/views/AiAssistant.vue'), meta: { title: 'AI 분석' } },
+  {
+    path: '/audit-logs',
+    component: () => import('@/views/AuditLogs.vue'),
+    meta: { title: '감사 로그', auditorOnly: true },
+  },
+  {
+    path: '/users',
+    component: () => import('@/views/Users.vue'),
+    meta: { title: '사용자 관리', adminOnly: true },
+  },
 ];
 
 const router = createRouter({
@@ -24,6 +34,14 @@ router.beforeEach((to) => {
   if (to.meta?.public) return true;
   if (!auth.isAuthenticated) {
     return { path: '/login', query: { next: to.fullPath } };
+  }
+  // 감사관 전용 라우트 (감사 로그 등) — OPERATOR 는 차단
+  if (to.meta?.auditorOnly && auth.role === 'OPERATOR') {
+    return { path: '/dashboard' };
+  }
+  // ADMIN 전용 (사용자 관리 등) — OPERATOR/VIEWER 차단
+  if (to.meta?.adminOnly && auth.role !== 'ADMIN') {
+    return { path: '/dashboard' };
   }
   return true;
 });

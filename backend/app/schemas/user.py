@@ -30,3 +30,25 @@ class LoginResponse(BaseModel):
     token_type: str = "bearer"
     expires_at: datetime
     user: UserOut
+
+
+class UserCreate(BaseModel):
+    username: str
+    password: str
+    full_name: str | None = None
+    email: str | None = None
+    role: UserRole = UserRole.VIEWER
+
+
+class UserUpdate(BaseModel):
+    full_name: str | None = None
+    email: str | None = None
+    role: UserRole | None = None
+
+
+class PasswordResetResponse(BaseModel):
+    """관리자가 비밀번호 초기화 시 1회 표시되는 임시 비밀번호."""
+
+    user_id: int
+    username: str
+    temp_password: str

@@ -2,7 +2,7 @@
   <v-app>
     <v-main class="login-bg">
       <div class="d-flex justify-center align-center" style="min-height: 100vh">
-        <v-card width="420" class="pa-2 login-card" elevation="8">
+        <v-card width="500" class="pa-2 login-card" elevation="8">
           <v-card-title class="d-flex align-center pa-4">
             <v-icon icon="mdi-hub" size="36" color="primary" class="mr-3" />
             <div>
@@ -70,19 +70,42 @@
             <v-divider class="my-4" />
 
             <div class="text-caption text-medium-emphasis mb-2">
-              <v-icon icon="mdi-information-outline" size="x-small" /> 평가용 데모 계정 (클릭 시 자동 입력)
+              <v-icon icon="mdi-information-outline" size="x-small" />
+              평가용 데모 계정 — 카드 클릭 시 자동 입력 후 로그인
             </div>
-            <div class="d-flex flex-wrap" style="gap:6px">
-              <v-chip
+
+            <div class="demo-grid">
+              <div
                 v-for="d in demoAccounts"
                 :key="d.username"
-                size="small"
-                variant="tonal"
-                :color="d.color"
-                @click="fill(d)"
+                class="demo-card"
+                :class="`demo-${d.color}`"
+                @click="fillAndLogin(d)"
               >
-                {{ d.label }}
-              </v-chip>
+                <div class="d-flex align-center mb-1">
+                  <v-icon :icon="d.icon" size="small" :color="d.color" class="mr-2" />
+                  <strong>{{ d.title }}</strong>
+                  <v-chip
+                    size="x-small"
+                    variant="flat"
+                    :color="d.color"
+                    class="ml-auto"
+                  >
+                    {{ d.username }}
+                  </v-chip>
+                </div>
+                <div class="text-caption text-medium-emphasis">
+                  {{ d.description }}
+                </div>
+                <div class="text-caption mt-1" style="font-size: 11px">
+                  <v-icon icon="mdi-check-circle" size="x-small" color="success" />
+                  {{ d.canDo }}
+                </div>
+                <div v-if="d.cannotDo" class="text-caption" style="font-size: 11px">
+                  <v-icon icon="mdi-close-circle" size="x-small" color="error" />
+                  {{ d.cannotDo }}
+                </div>
+              </div>
             </div>
           </v-card-text>
         </v-card>
@@ -108,19 +131,51 @@ const errMsg = ref('');
 
 const reason = computed(() => route.query.reason as string | undefined);
 
-// 입력란 placeholder — 흐릿하게 데모 계정 노출 (평가관 진입 편의)
-const hintUsername = 'admin / operator / viewer';
-const hintPassword = 'admin1234 / op1234 / view1234';
+// 입력란 placeholder — 평가관에게 아래 데모 카드 클릭 안내
+const hintUsername = '아래 데모 계정 카드를 클릭하세요 ↓';
+const hintPassword = '카드 클릭 시 자동 입력됩니다';
 
 const demoAccounts = [
-  { label: '관리자 (admin)', username: 'admin', password: 'admin1234', color: 'error' },
-  { label: '운영자 (operator)', username: 'operator', password: 'op1234', color: 'warning' },
-  { label: '감사자 (viewer)', username: 'viewer', password: 'view1234', color: 'info' },
+  {
+    title: '관리자',
+    username: 'admin',
+    password: 'admin1234',
+    color: 'error',
+    icon: 'mdi-shield-crown-outline',
+    description: '시스템 관리자 — 모든 기능 접근',
+    canDo: '인터페이스 등록·수정·보관/복원·시크릿 관리·실행·재처리·장애 처리·SLA 목표 변경',
+    cannotDo: '',
+  },
+  {
+    title: '운영자',
+    username: 'operator',
+    password: 'op1234',
+    color: 'warning',
+    icon: 'mdi-account-hard-hat-outline',
+    description: '현장 운영자 — 실행과 장애 대응 담당',
+    canDo: '▶ 수동 실행 · ↻ 재처리 (단건/일괄) · 장애 해결 처리',
+    cannotDo: '인터페이스 등록·수정·보관, 시크릿 변경, SLA 목표 변경 불가',
+  },
+  {
+    title: '감사자',
+    username: 'viewer',
+    password: 'view1234',
+    color: 'info',
+    icon: 'mdi-eye-outline',
+    description: '감사관·임원·신입 — 읽기 전용',
+    canDo: '모든 화면 조회 + Excel 다운로드 + 프린트(PDF) 가능',
+    cannotDo: '실행·재처리·장애 처리·등록 등 모든 변경 액션 불가',
+  },
 ];
 
 function fill(d: { username: string; password: string }) {
   username.value = d.username;
   password.value = d.password;
+}
+
+async function fillAndLogin(d: { username: string; password: string }) {
+  fill(d);
+  await onSubmit();
 }
 
 async function onSubmit() {
@@ -146,4 +201,25 @@ async function onSubmit() {
 .login-card {
   border-radius: 12px;
 }
+
+.demo-grid {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.demo-card {
+  border: 1px solid rgba(0, 0, 0, 0.12);
+  border-radius: 8px;
+  padding: 10px 12px;
+  cursor: pointer;
+  transition: all 0.15s ease;
+  background: #fff;
+}
+.demo-card:hover {
+  transform: translateY(-1px);
+  box-shadow: 0 4px 10px rgba(0, 0, 0, 0.08);
+}
+.demo-card.demo-error:hover { border-color: #e04f5f; }
+.demo-card.demo-warning:hover { border-color: #f6a623; }
+.demo-card.demo-info:hover { border-color: #2196f3; }
 </style>

@@ -248,3 +248,56 @@ export const Performance = {
   throughput: (bucket_minutes = 15, hours = 24) =>
     api.get<ThroughputPoint[]>('/performance/throughput', { params: { bucket_minutes, hours } }),
 };
+
+export interface UserItem {
+  id: number;
+  username: string;
+  full_name: string | null;
+  email: string | null;
+  role: 'ADMIN' | 'OPERATOR' | 'VIEWER';
+  last_login_at: string | null;
+  disabled_at: string | null;
+  created_at: string;
+}
+
+export const Users = {
+  list: () => api.get<UserItem[]>('/users'),
+  create: (payload: { username: string; password: string; full_name?: string; email?: string; role: string }) =>
+    api.post<UserItem>('/users', payload),
+  update: (id: number, payload: { full_name?: string; email?: string; role?: string }) =>
+    api.patch<UserItem>(`/users/${id}`, payload),
+  disable: (id: number) => api.post<UserItem>(`/users/${id}/disable`),
+  enable: (id: number) => api.post<UserItem>(`/users/${id}/enable`),
+  resetPassword: (id: number) =>
+    api.post<{ user_id: number; username: string; temp_password: string }>(`/users/${id}/reset-password`),
+};
+
+export interface AuditLogItem {
+  id: number;
+  actor_user_id: number | null;
+  actor_username: string;
+  actor_role: string | null;
+  action: string;
+  resource_type: string | null;
+  resource_id: string | null;
+  before_value: Record<string, unknown> | null;
+  after_value: Record<string, unknown> | null;
+  ip: string | null;
+  user_agent: string | null;
+  occurred_at: string;
+}
+
+export const AuditLogs = {
+  list: (params: Record<string, unknown> = {}) =>
+    api.get<AuditLogItem[]>('/audit-logs', { params }),
+  actions: () => api.get<string[]>('/audit-logs/actions'),
+  resourceTypes: () => api.get<string[]>('/audit-logs/resource-types'),
+  exportXlsxUrl: (params: Record<string, unknown> = {}) => {
+    const q = new URLSearchParams();
+    for (const [k, v] of Object.entries(params)) {
+      if (v !== undefined && v !== null && v !== '') q.set(k, String(v));
+    }
+    const qs = q.toString();
+    return `/api/audit-logs/export.xlsx${qs ? '?' + qs : ''}`;
+  },
+};
