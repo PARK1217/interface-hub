@@ -1,4 +1,11 @@
-"""AES-GCM symmetric encryption for at-rest credentials (API keys, OAuth tokens)."""
+"""인터페이스 인증 시크릿 (API key, OAuth 토큰 등) 의 at-rest 암호화.
+
+AES-GCM 256-bit 사용. SECRET_KEY 는 base64 디코딩 후 정확히 16/24/32 바이트
+여야 함 — 이전에 잘못된 길이 (33바이트) 로 시작해서 모든 시크릿 저장이
+ValueError 로 깨졌던 사례 있음. 운영 배포 시 반드시
+``python -c "import os,base64;print(base64.b64encode(os.urandom(32)).decode())"``
+로 새로 생성한 32바이트 키로 교체할 것.
+"""
 
 from __future__ import annotations
 

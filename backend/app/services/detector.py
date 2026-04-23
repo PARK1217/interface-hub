@@ -50,7 +50,13 @@ def _open_incident(db: Session, interface_id: int, type_: IncidentType) -> Incid
 def _open_or_update(
     db: Session, itf: Interface, type_: IncidentType, summary: str, severity: str = "warning"
 ) -> Incident | None:
-    """Create a new open incident if none exists for (interface, type); else no-op."""
+    """(인터페이스, 유형) 조합당 OPEN incident 1건만 유지 (alarm fatigue 방지).
+
+    의도적 dedup: KIDI 가 100번 연속 실패해도 운영자에게는 incident 1건만
+    생성됨 — 야간/휴일 알림 폭주 방지. 업계 표준 (PagerDuty/Opsgenie/Datadog
+    의 alert grouping 과 동일 개념). 실제 호출 실패 N건은 call_logs 에
+    그대로 보존되며 incident → 관련 호출 드릴다운으로 확인 가능.
+    """
     existing = _open_incident(db, itf.id, type_)
     if existing:
         return None

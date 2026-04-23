@@ -1,4 +1,9 @@
-"""APScheduler integration — re-syncs cron jobs from the DB on startup and on demand."""
+"""APScheduler 통합 — 시작 시 + 인터페이스 변경 시 DB의 cron 잡을 재동기화.
+
+CronTrigger 의 timezone 은 반드시 KST (UTC 면 운영자가 "매일 03시" 입력했는데
+12시에 도는 사고 발생). 보관 처리(deleted_at) 또는 enabled=false 인 인터페이스는
+sync_jobs 에서 자동 제외 → 사용자 액션 1번에 cron 자동 갱신.
+"""
 
 from __future__ import annotations
 

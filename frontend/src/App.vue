@@ -1,6 +1,6 @@
 <template>
   <v-app>
-    <v-navigation-drawer permanent color="primary" theme="dark">
+    <v-navigation-drawer permanent color="primary" theme="dark" class="no-print">
       <v-list-item class="pa-4">
         <template #prepend>
           <v-icon icon="mdi-hub" size="32" />
@@ -20,7 +20,7 @@
       </v-list>
     </v-navigation-drawer>
 
-    <v-app-bar elevation="1">
+    <v-app-bar elevation="1" class="no-print">
       <v-app-bar-title>{{ currentTitle }}</v-app-bar-title>
       <v-spacer />
       <v-chip :color="connected ? 'success' : 'error'" variant="flat" size="small" class="mr-3">
@@ -65,3 +65,60 @@ onMounted(() => {
   setTimeout(() => (connected.value = true), 500);
 });
 </script>
+
+<style>
+@media print {
+  /* Reset page so charts & tables get the full A4 landscape printable area.
+     Without this Vuetify keeps reserving 256px on the left for the (now
+     hidden) navigation drawer, which causes graphs to overflow / get clipped. */
+  @page {
+    size: A4 landscape;
+    margin: 8mm;
+  }
+
+  /* Hide app chrome */
+  .no-print,
+  .v-navigation-drawer,
+  .v-app-bar {
+    display: none !important;
+  }
+
+  /* Vuetify's v-main applies a fixed left padding to clear the drawer.
+     Cancel that so the report uses the full page width. */
+  .v-main {
+    padding: 0 !important;
+    margin: 0 !important;
+  }
+  .v-container,
+  .v-container.pa-6 {
+    padding: 0 !important;
+    max-width: 100% !important;
+  }
+  .v-application,
+  .v-application__wrap {
+    background: #fff !important;
+  }
+
+  /* ApexCharts SVG must shrink to the new printable width */
+  .apexcharts-canvas,
+  .apexcharts-canvas svg,
+  .apexcharts-svg {
+    width: 100% !important;
+    max-width: 100% !important;
+    height: auto !important;
+  }
+
+  /* Hide pagination controls inside data tables when printing */
+  .v-data-table-footer,
+  .v-data-table__th__sort-badge,
+  .v-data-table-rows-no-data {
+    display: none !important;
+  }
+
+  /* Avoid table rows being cut between pages */
+  tr,
+  .v-card {
+    page-break-inside: avoid;
+  }
+}
+</style>

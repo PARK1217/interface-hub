@@ -71,6 +71,7 @@
       <v-card-text>
         <apexchart
           v-if="trendSeries.length"
+          ref="trendChartRef"
           type="bar"
           height="360"
           :options="trendOpts"
@@ -101,6 +102,7 @@
       <v-card-text>
         <apexchart
           v-if="calSeries.length"
+          ref="calChartRef"
           type="heatmap"
           :height="60 + 30 * calSeries.length"
           :options="calOpts"
@@ -143,7 +145,7 @@
 </template>
 
 <script setup lang="ts">
-import { computed, onMounted, ref } from 'vue';
+import { computed, onBeforeUnmount, onMounted, ref } from 'vue';
 import {
   Sla,
   type SlaCalendarCell,
@@ -175,15 +177,18 @@ const days = ref(30);
 const loading = ref(false);
 const printedAt = ref('');
 
-// Auto-pick trend bucket based on selected period:
-// short period → monthly (more granular); long period → quarterly (less crowded)
+// 선택 기간에 따라 추이 bucket 자동 선택:
+//   짧은 기간 → 월별 (granular), 180일 초과 → 분기별 (덜 빽빽).
+// 차트 타입은 안 바뀌고 (위 주석 참조) bucket 단위만 바뀜.
 const trendBucket = computed<'month' | 'quarter'>(() =>
   days.value > 180 ? 'quarter' : 'month',
 );
 const trendMonths = computed(() =>
   Math.max(3, Math.min(24, Math.ceil(days.value / 30) + 2)),
 );
-// Calendar heatmap is always capped at 90 days for visual readability
+// 캘린더 히트맵은 시각 가독성 한계로 **항상 최근 90일까지만** 표시.
+// 그 이상은 컬럼이 5px 이하로 줄어들어 사람이 못 읽음. 더 긴 기간 데이터는
+// Excel 다운로드로 안내 (헤더 칩에 표시).
 const calendarDays = computed(() => Math.min(90, days.value));
 
 const excelHref = computed(() => Sla.exportXlsxUrl(days.value));
@@ -245,10 +250,16 @@ const trendBucketCount = computed(
 
 const trendOpts = computed(() => {
   const ys = trendRows.value.map((p) => p.uptime_pct).filter((v) => Number.isFinite(v));
+  // 데이터에 95% 미만 dip 있으면 Y축이 자동으로 85까지 내려가서 안 잘림.
+  // 다 99%대면 90~100 으로 줌인되어 차이가 잘 보임.
   const yMin = ys.length ? Math.min(85, Math.floor(Math.min(...ys) - 1)) : 90;
-  // Always grouped bar — consistent for monthly/quarterly reporting.
-  // When data grows (>12 buckets × >8 series), aggregation (top-N) is the
-  // answer, not switching chart type.
+  // 차트 타입은 **항상 그룹 막대** 로 고정. 월별/분기별 보고서의 표준
+  // 시각화 형태이고, 운영자가 "SLA 추이는 막대 차트" 로 한 번 학습하면
+  // 매번 같은 형태로 인지 가능. 데이터 양에 따라 자동으로 바/라인 전환
+  // 시도했었으나 — 같은 화면이 매번 다른 모양으로 나오는 건 BI 안티패턴
+  // (Tableau/PowerBI/Datadog 등도 차트 타입은 고정). 데이터가 너무
+  // 많아질 때는 차트 형태가 아니라 데이터 자체를 줄임 (Top-N, 평균,
+  // 드릴다운).
   return {
     chart: {
       id: 'sla-trend',
@@ -402,30 +413,124 @@ async function load() {
   }
 }
 
-function printReport() {
-  printedAt.value = new Date().toLocaleString('ko-KR');
-  setTimeout(() => window.print(), 100);
+// A4 가로 인쇄 영역에 맞춘 명시적 차트 사이즈
+// (≈ 280mm × 200mm, 여백 8mm → ≈ 1050px × 750px @ 96dpi).
+// CSS 만으로는 ApexCharts SVG 의 내부 viewBox 가 화면 픽셀로 고정돼서
+// 인쇄 시 X축 라벨까지 잘림. beforeprint 시점에 chart.updateOptions 로
+// width/height 를 명시적으로 바꿔 차트 자체를 재렌더링해야 함.
+const PRINT_WIDTH = 1050;
+const PRINT_TREND_H = 380;
+const PRINT_CAL_H = 460;
+
+const trendChartRef = ref<any>(null);
+const calChartRef = ref<any>(null);
+
+function applyPrintLayout() {
+  trendChartRef.value?.updateOptions(
+    { chart: { width: PRINT_WIDTH, height: PRINT_TREND_H } },
+    false,  // redrawPaths
+    false,  // animate
+    false,  // updateSyncedCharts
+  );
+  calChartRef.value?.updateOptions(
+    { chart: { width: PRINT_WIDTH, height: PRINT_CAL_H } },
+    false,
+    false,
+    false,
+  );
 }
 
-onMounted(load);
+function applyScreenLayout() {
+  trendChartRef.value?.updateOptions(
+    { chart: { width: '100%', height: 360 } }, false, false, false,
+  );
+  calChartRef.value?.updateOptions(
+    { chart: { width: '100%', height: 60 + 30 * calSeries.value.length } },
+    false, false, false,
+  );
+}
+
+function printReport() {
+  printedAt.value = new Date().toLocaleString('ko-KR');
+  applyPrintLayout();
+  // Wait one paint cycle so ApexCharts finishes the redraw at print size
+  setTimeout(() => {
+    window.print();
+    // After print dialog dismissed, restore screen layout
+    setTimeout(applyScreenLayout, 300);
+  }, 350);
+}
+
+function handleBeforePrint() {
+  printedAt.value = new Date().toLocaleString('ko-KR');
+  applyPrintLayout();
+}
+function handleAfterPrint() {
+  applyScreenLayout();
+}
+
+onMounted(() => {
+  load();
+  if (typeof window !== 'undefined') {
+    window.addEventListener('beforeprint', handleBeforePrint);
+    window.addEventListener('afterprint', handleAfterPrint);
+  }
+});
+
+onBeforeUnmount(() => {
+  if (typeof window !== 'undefined') {
+    window.removeEventListener('beforeprint', handleBeforePrint);
+    window.removeEventListener('afterprint', handleAfterPrint);
+  }
+});
 </script>
 
 <style scoped>
 .print-only {
   display: none;
 }
+
 @media print {
-  .no-print {
-    display: none !important;
+  /* Use landscape so wide charts (24-hour, 90-day calendar) actually fit */
+  @page {
+    size: A4 landscape;
+    margin: 10mm;
   }
-  .print-only {
-    display: block !important;
-  }
-  /* Make charts/tables fit nicely on A4 */
+
+  /* Hide app chrome */
+  .no-print { display: none !important; }
+  .print-only { display: block !important; }
+
+  /* Cards: no shadow, page-break friendly, full width */
   :deep(.v-card) {
     box-shadow: none !important;
     border: 1px solid #ddd !important;
     page-break-inside: avoid;
+    width: 100% !important;
+    max-width: 100% !important;
   }
+  :deep(.v-card-text) { padding: 12px !important; }
+
+  /* ApexCharts SVG: force to fit the printable width */
+  :deep(.apexcharts-canvas),
+  :deep(.apexcharts-canvas svg),
+  :deep(.apexcharts-svg) {
+    width: 100% !important;
+    max-width: 100% !important;
+    height: auto !important;
+  }
+
+  /* Make tooltips/zoom buttons not bleed into print */
+  :deep(.apexcharts-tooltip),
+  :deep(.apexcharts-toolbar),
+  :deep(.apexcharts-zoom-icon) {
+    display: none !important;
+  }
+}
+
+/* Print-only header style */
+.print-only h2 {
+  font-size: 18px;
+  margin: 0 0 4px 0;
 }
 </style>

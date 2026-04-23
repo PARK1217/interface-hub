@@ -1,7 +1,9 @@
-"""Shared helpers for incident ↔ call_log linkage.
+"""incident ↔ call_log 연결 공통 헬퍼.
 
-Used by both the incidents HTTP route and the detector (auto-resolve path)
-so they agree on which call_logs 'belong' to which incident.
+incidents 라우트와 detector 의 자동 해결 경로 양쪽에서 동일 로직으로
+"이 incident 에 어떤 call_logs 가 묶이는지" 판단하도록 한 곳에 모음.
+양쪽 룰이 어긋나면 운영자가 incident 다이얼로그에서 본 N건과 detector 가
+처리하는 N건이 달라지는 골치아픈 버그가 생김.
 """
 
 from __future__ import annotations
@@ -16,21 +18,21 @@ from app.models.call_log import CallStatus
 from app.models.incident import IncidentType
 
 
-# Inverse of detector._STATUS_TO_INCIDENT — for a given incident type,
-# which CallStatus values should be considered 'related'?
+# detector._STATUS_TO_INCIDENT 의 역매핑 — incident 유형별로 어떤
+# CallStatus 가 "관련" 으로 묶이는지.
 _INCIDENT_TO_STATUSES: dict[IncidentType, list[CallStatus]] = {
     IncidentType.TIMEOUT: [CallStatus.TIMEOUT],
     IncidentType.AUTH_ERROR: [CallStatus.AUTH_ERROR],
     IncidentType.FORMAT_ERROR: [CallStatus.FORMAT_ERROR],
     IncidentType.SERVER_ERROR: [CallStatus.SERVER_ERROR],
     IncidentType.UNKNOWN: [CallStatus.FAILURE],
-    IncidentType.SLOW_RESPONSE: [],  # special: filter by duration_ms
+    IncidentType.SLOW_RESPONSE: [],  # 특수: status 가 아니라 duration_ms 로 필터
     IncidentType.HIGH_FAILURE_RATE: [s for s in CallStatus if s != CallStatus.SUCCESS],
 }
 
 
 def related_log_query(incident: Incident, interface: Interface | None):
-    """Build the WHERE clause selecting call_logs that 'belong' to this incident."""
+    """이 incident 에 묶인 call_logs 를 고르는 WHERE 절 빌더."""
     end = incident.resolved_at or now_kst()
     base = (
         select(CallLog)
@@ -54,14 +56,14 @@ def related_log_query(incident: Incident, interface: Interface | None):
 def mark_related_handled(
     db: Session, incident: Incident, interface: Interface | None
 ) -> int:
-    """Mark all unprocessed related call_logs as ``is_reprocessed=True``.
+    """이 incident 에 묶인 미처리 call_logs 를 모두 ``is_reprocessed=True`` 로 마킹.
 
-    Called whenever an incident closes (manual or auto). Prevents the operator
-    from accidentally re-clicking ↻ on the Logs page after the incident has
-    already been administratively closed — which would cause duplicate
-    external calls.
+    incident 가 닫힐 때마다 호출 (수동 해결 / 자동 해결 둘 다). 운영자가
+    incident 닫은 뒤에도 호출 로그 페이지 가서 ↻ 재처리 다시 눌러서 외부
+    기관에 중복 호출 가는 헛점 방지. 마킹된 행은 UI 에서 ↻ 버튼이
+    사라짐 (canRetry → false).
 
-    Returns the number of rows marked.
+    반환: 마킹된 행 수.
     """
     rows = db.scalars(
         related_log_query(incident, interface).where(CallLog.is_reprocessed.is_(False))

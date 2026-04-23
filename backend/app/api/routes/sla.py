@@ -20,10 +20,15 @@ router = APIRouter(prefix="/sla", tags=["sla"])
 
 
 def _interfaces_with_data_in_period(db: Session, since: datetime) -> list[Interface]:
-    """All interfaces (including soft-deleted) that produced any call_log
-    in the given period. Used by audit/SLA views so retroactive reports
-    stay immutable — i.e. archiving an interface today doesn't make last
-    month's SLA report disappear.
+    """기간 내 호출 로그가 있던 **모든** 인터페이스 (보관된 것 포함) 반환.
+
+    감사·SLA 보고는 retroactive immutable 원칙 (한 번 보고한 자료는 변경
+    되지 않음). 오늘 인터페이스를 보관 처리해도 지난달 SLA 보고서에는
+    그대로 남아 있어야 함 — 안 그러면 금감원 보고 일관성 깨지고 "왜
+    숫자가 어제랑 다르냐" 추궁 받음.
+
+    Active 만 보고 싶으면 routes/interfaces.py 의 list (deleted_at 필터)
+    사용. 이 헬퍼는 "기간 내 데이터가 존재했던 모든 인터페이스" 가 의도.
     """
     ids = set(
         db.scalars(

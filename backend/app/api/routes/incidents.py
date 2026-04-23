@@ -94,12 +94,13 @@ def resolve_incident(
     if resolution:
         obj.resolution = resolution
     itf = db.get(Interface, obj.interface_id)
+    # incident 해결 처리 시 관련 call_logs 도 모두 is_reprocessed=true 로 마킹.
+    # 안 그러면 운영자가 호출 로그 페이지 가서 ↻ 재처리 다시 누를 수 있어
+    # 외부 기관에 중복 호출 발생 (이전에 사용자가 지적한 헛점).
     handled = mark_related_handled(db, obj, itf)
     db.commit()
     db.refresh(obj)
-    out = _to_out(db, obj)
-    # bonus: hint how many logs were swept (kept out of schema for simplicity)
-    return out
+    return _to_out(db, obj)
 
 
 @router.get("/{incident_id}/related-logs", response_model=list[CallLogOut])
@@ -128,14 +129,15 @@ async def retry_related(
     payload: IncidentRetryRequest,
     db: Session = Depends(get_db),
 ) -> BulkRetryResponse:
-    """Retry the call_logs that belong to this incident.
+    """incident 에 묶인 call_logs 일괄 재처리.
 
-    mode=latest → re-run only the most recent failed call (safe default —
-        guards against billing/duplicating the same business operation).
-    mode=all    → re-run every still-unprocessed failed call related to the
-        incident (use when each call represents a distinct business request).
+    mode=latest → 가장 최근 실패만 1건 재실행 (**안전 기본값**).
+        같은 업무 호출이 시스템 자동 재시도로 N번 들어왔을 가능성 있음 →
+        N번 다 재처리하면 외부 기관에 중복 청구·발송 위험.
+    mode=all    → 보관 안 된 모든 실패 call_log 재실행. 각 호출이 서로
+        다른 고객의 별개 요청임이 명확할 때만 사용 (UI 에서 confirm 받음).
 
-    Already-reprocessed rows are always skipped.
+    이미 is_reprocessed=true 인 행은 항상 스킵 → 무한 재처리 방지.
     """
     obj = db.get(Incident, incident_id)
     if not obj:

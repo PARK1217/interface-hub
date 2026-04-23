@@ -1,7 +1,13 @@
-"""Interface execution — REST/SOAP/FTP/MQ adapters.
+"""인터페이스 실행 — REST/SOAP/SFTP/Batch/MQ 5종 어댑터 디스패치.
 
-Phase 1 ships REST end-to-end and stubs SOAP via httpx; FTP/MQ adapters raise
-NotImplementedError but are wired up so Phase 2/3 work plugs in cleanly.
+각 어댑터는 (http_status, response, exc) 튜플 반환. execute_interface 가
+공통 후처리 (call_log 저장, traceback 캡처, detector 호출, WebSocket broadcast)
+담당. 새 프로토콜 추가 시 _exec_xxx 함수 + 디스패치 한 줄만 추가.
+
+설계 메모:
+- 같은 call_log 두 번 재처리 방지: parent_log.is_reprocessed=True 마킹
+- traceback 풀 스택 캡처: 운영자가 ELK 안 가도 다이얼로그에서 원인 파악 가능
+- response 에 헤더+바디 분리 저장: 401 의 www-authenticate 같은 진단 정보 보존
 """
 
 from __future__ import annotations
@@ -336,11 +342,12 @@ async def execute_interface(
     triggered_by: str = "manual",
     parent_log: CallLog | None = None,
 ) -> CallLog:
-    """Execute an interface once, persist a CallLog row, broadcast & detect.
+    """인터페이스 1회 실행 → CallLog 저장 → broadcast/detect.
 
-    When ``parent_log`` is provided, the new row is linked as a retry of that
-    log: ``parent_log_id`` set, ``retry_count`` incremented from the parent,
-    ``triggered_by='reprocess'``, and the parent is flagged ``is_reprocessed``.
+    ``parent_log`` 가 주어지면 그 호출의 재처리로 연결:
+    parent_log_id 설정, retry_count 증가, triggered_by='reprocess',
+    원본은 is_reprocessed=True 로 마킹 (UI 에서 ↻ 버튼 사라져 무한 재처리
+    방지).
     """
     started = time.perf_counter()
     http_status: int | None = None

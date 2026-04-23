@@ -188,6 +188,11 @@
             </v-col>
           </v-row>
 
+          <!-- 스케줄 입력 — raw cron 직접 입력 폼 절대 두지 말 것.
+               운영자가 cron 문법 (* / - , 등) 잘못 쳐서 깨지는 사고가 표준
+               이슈. 라디오 버튼으로 6가지 패턴 (사용 안 함/매 N분/매시간/매일/
+               매주/매월) 선택 → 드롭다운으로 시·분·일·요일만 입력 → 내부에서
+               cron 표현식 자동 생성. 운영자에게 cron 문법 노출 0. -->
           <div class="text-overline text-medium-emphasis mb-2 mt-4">스케줄</div>
           <v-card variant="outlined" rounded="lg" class="pa-4 mb-2">
             <v-btn-toggle

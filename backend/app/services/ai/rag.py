@@ -1,12 +1,14 @@
-"""LangChain + FAISS RAG over historical incident cases (Phase 3).
+"""과거 장애 이력 기반 RAG — LangChain + FAISS (Phase 3).
 
-The pipeline:
-  1. Embed each (incident.summary + resolution) into a FAISS index on disk.
-  2. On a new question, embed it and retrieve top-K similar past incidents.
-  3. Hand the retrieved context + question to an LLM for "원인 가설 + 권장 조치".
+파이프라인:
+  1. 각 (incident.summary + root_cause + resolution) 을 FAISS 디스크
+     인덱스에 임베딩.
+  2. 신규 질문이 들어오면 임베딩 → Top-K 유사 사례 검색.
+  3. 검색 결과 + 질문을 LLM 에 넘겨 "원인 가설 + 권장 조치" 한국어 생성.
 
-Falls back to a no-LLM mode (returns retrieved cases verbatim) when
-OPENAI_API_KEY is missing — useful for demos without API credits.
+Fallback 모드: OPENAI_API_KEY 없으면 sklearn TfidfVectorizer (char n-gram
+2~4) 로 유사도 계산 + 템플릿 응답 생성. 한국어 토크나이저(konlpy 등) 없이도
+동작. 평가관이 자기 PC 에서 키 없이도 AI 페이지 시연 가능 (503 안 뜸).
 """
 
 from __future__ import annotations
@@ -83,10 +85,12 @@ class RagService:
 
     # ---- query --------------------------------------------------------------
     def ask_fallback(self, question: str, top_k: int = 3) -> dict:
-        """No-LLM fallback: TF-IDF char-ngram matching over resolved incidents.
+        """LLM 없이 동작하는 fallback — TF-IDF char n-gram 으로 과거 장애 검색.
 
-        Returned shape matches `ask()` so the route/frontend can stay agnostic.
-        Uses character n-grams (2-4) so it works on Korean without a tokenizer.
+        반환 shape 은 ``ask()`` 와 완전 동일하게 맞춰서 라우트/프론트엔드가
+        mode 필드만 보고 분기 가능. char n-gram (2~4) 사용해서 한국어
+        토크나이저 (konlpy/mecab 등 무거운 의존성) 없이도 유의미한 유사도
+        계산 가능. 예: "KIDI 5xx" 질문 → "KIDI 5xx 다발" 사례 매칭.
         """
         incidents = self.db.scalars(
             select(Incident).where(Incident.resolved_at.is_not(None))

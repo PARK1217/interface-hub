@@ -17,10 +17,12 @@ router = APIRouter(prefix="/interfaces", tags=["interfaces"])
 
 @router.get("/cron-preview")
 def cron_preview(expression: str, count: int = 3) -> dict:
-    """Validate a cron expression and return the next N fire times in KST.
+    """cron 표현식 검증 + 다음 N회 실행 시각 반환 (KST 기준).
 
-    Used by the registration dialog so operators can confirm what their
-    chosen schedule actually means before saving.
+    등록 다이얼로그에서 운영자가 선택한 스케줄이 실제로 언제 도는지 미리
+    확인할 수 있도록 사용. 운영자는 cron 문법 직접 입력 안 하지만 (라디오
+    버튼 + 드롭다운으로 cron 자동 생성), 그 결과를 신뢰하려면 미리보기
+    필요.
     """
     from croniter import croniter
 
@@ -117,15 +119,15 @@ def update_interface(
 
 @router.delete("/{interface_id}", status_code=status.HTTP_204_NO_CONTENT, response_class=Response)
 def delete_interface(interface_id: int, db: Session = Depends(get_db)) -> Response:
-    """Soft delete — marks the interface as deleted but **keeps it forever**.
+    """소프트 삭제 — deleted_at 만 마킹하고 **DB 행은 영구 보존**.
 
-    The row stays in the DB indefinitely so cascade-linked call_logs /
-    incidents / SLA targets remain queryable for audit (금감원 전산사고
-    보고). There is intentionally NO purge / hard-delete cron — losing the
-    Interface row would cascade-delete all historical evidence.
+    cascade 로 묶인 call_logs / incidents / SLA targets 가 금감원 전산사고
+    보고용 감사 자료라서, Interface 행을 hard delete 하면 그 자료가 전부
+    cascade 로 사라짐. 그래서 **N일 보관 후 자동 삭제 cron 같은 건 절대
+    추가하지 말 것** (이전 시도 후 사용자가 거부함).
 
-    Side effects: enabled=false (scheduler stops firing it), excluded from
-    the default interface list (use ``include_deleted=true`` to see it).
+    부수 효과: enabled=false 로 같이 꺼서 스케줄러가 더 안 부름. 기본
+    인터페이스 목록에서 제외 (휴지통 토글로만 보임).
     """
     obj = db.get(Interface, interface_id)
     if not obj:
@@ -144,8 +146,8 @@ def delete_interface(interface_id: int, db: Session = Depends(get_db)) -> Respon
 
 @router.post("/{interface_id}/restore", response_model=InterfaceOut)
 def restore_interface(interface_id: int, db: Session = Depends(get_db)) -> InterfaceOut:
-    """Undelete a soft-deleted interface. Does NOT auto re-enable execution —
-    operator must explicitly toggle ``enabled`` afterward."""
+    """보관 해제 (휴지통 → 활성). enabled 는 자동으로 켜지 않음 — 운영자가
+    의도적으로 ``enabled`` 토글을 다시 켜야 cron 이 돌기 시작."""
     obj = db.get(Interface, interface_id)
     if not obj:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "interface not found")

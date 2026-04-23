@@ -14,9 +14,12 @@ engine = create_engine(
     _settings.database_url,
     pool_pre_ping=True,
     future=True,
-    # Make every Postgres session render timestamps in KST. Storage is still
-    # UTC internally (PG always normalizes timestamptz), but NOW() and display
-    # use Asia/Seoul so raw SQL queries show what operators expect.
+    # 모든 PG 세션의 timezone 을 KST 로 강제. PG 의 TIMESTAMPTZ 는 내부적
+    # 으로는 무조건 UTC 로 저장하지만 (PG의 강제 동작, 못 바꿈), NOW() /
+    # CURRENT_TIMESTAMP / 조회 결과는 세션 timezone 으로 변환되어 나옴.
+    # → 운영자/감사관이 psql 로 직접 조회해도 KST 로 보이고, API JSON 도
+    # +09:00 오프셋이 붙어 나감. docker-compose 의 TZ=Asia/Seoul 환경
+    # 변수와 같이 동작.
     connect_args={"options": "-c timezone=Asia/Seoul"},
 )
 
@@ -36,14 +39,16 @@ def get_db() -> Generator[Session, None, None]:
 
 
 def init_db() -> None:
-    """Create all tables. For real deployments use Alembic migrations."""
-    from app import models  # noqa: F401  (ensure models are imported)
+    """모든 테이블 생성. 운영 환경에서는 Alembic 마이그레이션으로 교체할 것."""
+    from app import models  # noqa: F401  (모델 모듈 임포트해서 metadata 등록)
 
     Base.metadata.create_all(bind=engine)
     _apply_demo_migrations()
 
 
-# Demo-only inline migrations. Replace with Alembic for production.
+# 데모 한정 인라인 마이그레이션. 운영 배포 시 Alembic 으로 교체할 것.
+# create_all() 은 새 테이블만 만들고 기존 테이블에 컬럼 추가는 못 하기 때문에
+# 새 컬럼이 추가될 때마다 여기에 ADD COLUMN IF NOT EXISTS 한 줄씩 박아둠.
 _DEMO_MIGRATIONS: list[str] = [
     "ALTER TABLE call_logs ADD COLUMN IF NOT EXISTS parent_log_id INTEGER REFERENCES call_logs(id) ON DELETE SET NULL",
     "ALTER TABLE call_logs ADD COLUMN IF NOT EXISTS retry_count INTEGER NOT NULL DEFAULT 0",
@@ -53,20 +58,21 @@ _DEMO_MIGRATIONS: list[str] = [
     "CREATE INDEX IF NOT EXISTS ix_call_logs_parent_log_id ON call_logs(parent_log_id)",
     "CREATE INDEX IF NOT EXISTS ix_call_logs_is_reprocessed ON call_logs(is_reprocessed)",
     "CREATE INDEX IF NOT EXISTS ix_call_logs_error_type ON call_logs(error_type)",
-    # Add new protocol enum value if missing (Postgres ENUM is finicky)
+    # 새 프로토콜 enum 값 추가 (PG ENUM 은 트랜잭션 안에서 까다로움 — IF NOT EXISTS 로 회피)
     "ALTER TYPE protocoltype ADD VALUE IF NOT EXISTS 'BATCH'",
-    # Interface soft delete
+    # 인터페이스 소프트 삭제 (deleted_at 만 마킹, hard delete 절대 X)
     "ALTER TABLE interfaces ADD COLUMN IF NOT EXISTS deleted_at TIMESTAMPTZ",
     "CREATE INDEX IF NOT EXISTS ix_interfaces_deleted_at ON interfaces(deleted_at)",
 ]
 
 
 def _apply_demo_migrations() -> None:
+    # IF NOT EXISTS 절은 PG 전용 문법이라 SQLite/dev 모드에서는 스킵
     if engine.dialect.name != "postgresql":
-        return  # IF NOT EXISTS on ADD COLUMN is Postgres-specific
+        return
     with engine.begin() as conn:
         for stmt in _DEMO_MIGRATIONS:
             try:
                 conn.execute(text(stmt))
             except Exception as e:  # noqa: BLE001
-                log.warning("demo migration skipped: %s — %s", stmt, e)
+                log.warning("데모 마이그레이션 스킵: %s — %s", stmt, e)
