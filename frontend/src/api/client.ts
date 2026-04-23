@@ -134,3 +134,41 @@ export const AI = {
   ask: (question: string, top_k = 3) => api.post('/ai/ask', { question, top_k }),
   anomaly: (interfaceId: number) => api.get(`/ai/anomaly/${interfaceId}`),
 };
+
+export interface PercentileRow {
+  interface_id: number;
+  interface_name: string;
+  protocol: string;
+  organization: string | null;
+  total_calls: number;
+  failure_count: number;
+  p50_ms: number;
+  p95_ms: number;
+  p99_ms: number;
+  max_ms: number;
+  avg_ms: number;
+  throughput_per_min: number;
+}
+export interface SlowCallRow {
+  id: number;
+  interface_id: number;
+  interface_name: string;
+  protocol: string;
+  duration_ms: number;
+  status: string;
+  http_status: number | null;
+  called_at: string;
+}
+export interface ThroughputPoint {
+  bucket: string;
+  tps: number;
+  p95_ms: number;
+}
+
+export const Performance = {
+  percentiles: (days = 7) => api.get<PercentileRow[]>('/performance/percentiles', { params: { days } }),
+  slowTop: (limit = 10, days = 7) =>
+    api.get<SlowCallRow[]>('/performance/slow-top', { params: { limit, days } }),
+  throughput: (bucket_minutes = 15, hours = 24) =>
+    api.get<ThroughputPoint[]>('/performance/throughput', { params: { bucket_minutes, hours } }),
+};

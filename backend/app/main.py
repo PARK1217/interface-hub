@@ -6,7 +6,16 @@ from contextlib import asynccontextmanager
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
-from app.api.routes import ai, call_logs, executions, incidents, interfaces, monitoring, sla
+from app.api.routes import (
+    ai,
+    call_logs,
+    executions,
+    incidents,
+    interfaces,
+    monitoring,
+    performance,
+    sla,
+)
 from app.core.config import get_settings
 from app.core.database import init_db
 from app.services.scheduler import start_scheduler, stop_scheduler
@@ -48,6 +57,7 @@ app.include_router(executions.router, prefix="/api")
 app.include_router(call_logs.router, prefix="/api")
 app.include_router(incidents.router, prefix="/api")
 app.include_router(sla.router, prefix="/api")
+app.include_router(performance.router, prefix="/api")
 app.include_router(ai.router, prefix="/api")
 app.include_router(monitoring.router)  # /ws/...
 

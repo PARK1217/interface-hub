@@ -50,6 +50,7 @@ const routes = [
   { path: '/interfaces', title: '인터페이스', icon: 'mdi-api' },
   { path: '/logs', title: '호출 로그', icon: 'mdi-file-document-outline' },
   { path: '/incidents', title: '장애', icon: 'mdi-alert-circle-outline' },
+  { path: '/performance', title: '성능 관리', icon: 'mdi-speedometer' },
   { path: '/sla', title: 'SLA', icon: 'mdi-chart-line' },
   { path: '/ai', title: 'AI 분석', icon: 'mdi-robot-outline' },
 ];
