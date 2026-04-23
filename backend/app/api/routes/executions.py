@@ -1,11 +1,12 @@
 from __future__ import annotations
 
-from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, status
+from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Request, status
 from sqlalchemy.orm import Session
 
-from app.api.deps import get_db
-from app.models import Interface
+from app.api.deps import get_db, require_role
+from app.models import Interface, User, UserRole
 from app.schemas.call_log import CallLogOut
+from app.services.audit import record_audit
 from app.services.executor import execute_interface
 
 router = APIRouter(prefix="/interfaces", tags=["executions"])
@@ -15,12 +16,21 @@ router = APIRouter(prefix="/interfaces", tags=["executions"])
 async def execute_now(
     interface_id: int,
     background: BackgroundTasks,
+    request: Request,
     db: Session = Depends(get_db),
+    # OPERATOR 이상만 ▶ 수동 실행 가능. VIEWER 는 차단 (실행 = 외부 호출 발생).
+    actor: User = Depends(require_role([UserRole.OPERATOR, UserRole.ADMIN])),
 ) -> CallLogOut:
     obj = db.get(Interface, interface_id)
     if not obj:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "interface not found")
     if obj.deleted_at is not None:
         raise HTTPException(status.HTTP_400_BAD_REQUEST, "interface is deleted — restore first")
-    log = await execute_interface(obj, db, triggered_by="manual")
+    log = await execute_interface(obj, db, triggered_by="manual", actor=actor)
+    record_audit(
+        db, actor=actor, action="interface.execute",
+        resource_type="interface", resource_id=obj.id,
+        after={"call_log_id": log.id, "status": log.status.value, "duration_ms": log.duration_ms},
+        request=request,
+    )
     return CallLogOut.model_validate(log)

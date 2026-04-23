@@ -8,6 +8,7 @@ from fastapi.middleware.cors import CORSMiddleware
 
 from app.api.routes import (
     ai,
+    auth,
     call_logs,
     executions,
     incidents,
@@ -52,6 +53,7 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+app.include_router(auth.router, prefix="/api")
 app.include_router(interfaces.router, prefix="/api")
 app.include_router(executions.router, prefix="/api")
 app.include_router(call_logs.router, prefix="/api")

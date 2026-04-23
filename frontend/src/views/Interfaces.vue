@@ -3,7 +3,17 @@
     <div class="d-flex align-center mb-4">
       <h2 class="text-h5">인터페이스 관리</h2>
       <v-spacer />
-      <v-btn color="primary" prepend-icon="mdi-plus" @click="openCreate">새 인터페이스</v-btn>
+      <v-btn
+        v-if="auth.isAdmin"
+        color="primary"
+        prepend-icon="mdi-plus"
+        @click="openCreate"
+      >
+        새 인터페이스
+      </v-btn>
+      <v-chip v-else size="small" variant="tonal" color="grey">
+        {{ auth.role }} 권한 — 읽기 전용
+      </v-chip>
     </div>
 
     <v-card class="mb-4">
@@ -123,12 +133,38 @@
         </template>
         <template #item.actions="{ item }">
           <template v-if="!item.deleted_at">
-            <v-btn icon="mdi-play" variant="text" size="small" @click="run(item)" :loading="running === item.id" />
-            <v-btn icon="mdi-pencil" variant="text" size="small" @click="openEdit(item)" />
-            <v-btn icon="mdi-archive-arrow-down" variant="text" size="small" color="error" @click="remove(item)" />
+            <!-- ▶ 실행: OPERATOR 이상 -->
+            <v-btn
+              v-if="auth.canMutate"
+              icon="mdi-play"
+              variant="text"
+              size="small"
+              :loading="running === item.id"
+              title="실행"
+              @click="run(item)"
+            />
+            <!-- ✏️ 수정 / 📦 보관: ADMIN 만 -->
+            <v-btn
+              v-if="auth.isAdmin"
+              icon="mdi-pencil"
+              variant="text"
+              size="small"
+              title="수정"
+              @click="openEdit(item)"
+            />
+            <v-btn
+              v-if="auth.isAdmin"
+              icon="mdi-archive-arrow-down"
+              variant="text"
+              size="small"
+              color="error"
+              title="보관 처리"
+              @click="remove(item)"
+            />
           </template>
           <template v-else>
             <v-btn
+              v-if="auth.isAdmin"
               prepend-icon="mdi-restore"
               variant="flat"
               color="success"
@@ -429,6 +465,9 @@
 import { computed, onMounted, reactive, ref, watch } from 'vue';
 import { Interfaces, type InterfaceItem } from '@/api/client';
 import { cronToLabel, formatDateTime } from '@/utils/format';
+import { useAuthStore } from '@/stores/auth';
+
+const auth = useAuthStore();
 
 type ScheduleType = 'none' | 'minutes' | 'hourly' | 'daily' | 'weekly' | 'monthly';
 

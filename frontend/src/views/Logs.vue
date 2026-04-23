@@ -7,7 +7,7 @@
         {{ selected.length }}건 선택
       </v-chip>
       <v-btn
-        v-if="selected.length"
+        v-if="selected.length && auth.canMutate"
         color="warning"
         prepend-icon="mdi-restart"
         :loading="bulkBusy"
@@ -15,6 +15,9 @@
       >
         선택 일괄 재처리
       </v-btn>
+      <v-chip v-if="!auth.canMutate" size="small" variant="tonal" color="grey">
+        {{ auth.role }} — 재처리 권한 없음
+      </v-chip>
     </div>
 
     <v-card class="mb-4">
@@ -89,7 +92,7 @@
             @click="openDetail(item)"
           />
           <v-btn
-            v-if="canRetry(item)"
+            v-if="canRetry(item) && auth.canMutate"
             icon="mdi-restart"
             size="x-small"
             variant="text"
@@ -262,6 +265,9 @@
 import { computed, onMounted, reactive, ref } from 'vue';
 import { CallLogs, type CallLogItem } from '@/api/client';
 import { formatDateTime } from '@/utils/format';
+import { useAuthStore } from '@/stores/auth';
+
+const auth = useAuthStore();
 
 const statuses = ['SUCCESS', 'FAILURE', 'TIMEOUT', 'AUTH_ERROR', 'FORMAT_ERROR', 'SERVER_ERROR'];
 const protocols = ['REST', 'SOAP', 'FTP', 'MQ', 'BATCH'];

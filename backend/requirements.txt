@@ -15,6 +15,8 @@ websockets==14.1
 croniter==5.0.1
 paramiko==3.5.0
 openpyxl==3.1.5
+bcrypt==4.2.1
+PyJWT==2.10.1
 # Phase 2
 aiosmtplib==3.0.2
 # Phase 3 (optional, AI)

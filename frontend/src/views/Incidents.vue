@@ -67,7 +67,7 @@
         </template>
         <template #item.actions="{ item }">
           <v-btn
-            v-if="!item.resolved_at"
+            v-if="!item.resolved_at && auth.canMutate"
             color="success"
             size="small"
             variant="tonal"
@@ -130,7 +130,7 @@
 
         <v-card-actions>
           <v-btn
-            v-if="retryableCount > 0"
+            v-if="retryableCount > 0 && auth.canMutate"
             color="warning"
             variant="tonal"
             prepend-icon="mdi-restart"
@@ -140,7 +140,7 @@
             최신 1건만 재처리
           </v-btn>
           <v-btn
-            v-if="retryableCount > 1"
+            v-if="retryableCount > 1 && auth.canMutate"
             color="warning"
             variant="elevated"
             prepend-icon="mdi-restart"
@@ -163,6 +163,9 @@
 import { computed, onMounted, reactive, ref } from 'vue';
 import { Incidents, type CallLogItem, type IncidentItem } from '@/api/client';
 import { formatDateTime } from '@/utils/format';
+import { useAuthStore } from '@/stores/auth';
+
+const auth = useAuthStore();
 
 const headers = [
   { title: '상태', key: 'state', width: 110 },

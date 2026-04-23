@@ -10,9 +10,10 @@ from pydantic import BaseModel
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from app.api.deps import get_db
+from app.api.deps import get_db, require_role
 from app.core.time import KST, now_kst
-from app.models import CallLog, Interface, SlaTarget
+from app.models import CallLog, Interface, SlaTarget, User, UserRole
+from app.services.audit import record_audit
 from app.models.call_log import CallStatus
 from app.schemas.sla_target import SlaReportRow, SlaTargetCreate, SlaTargetOut, SlaTargetUpdate
 
@@ -49,7 +50,11 @@ def list_targets(db: Session = Depends(get_db)) -> list[SlaTargetOut]:
 
 
 @router.post("/targets", response_model=SlaTargetOut, status_code=status.HTTP_201_CREATED)
-def upsert_target(payload: SlaTargetCreate, db: Session = Depends(get_db)) -> SlaTargetOut:
+def upsert_target(
+    payload: SlaTargetCreate,
+    db: Session = Depends(get_db),
+    actor: User = Depends(require_role([UserRole.ADMIN])),
+) -> SlaTargetOut:
     existing = db.scalar(select(SlaTarget).where(SlaTarget.interface_id == payload.interface_id))
     if existing:
         for k, v in payload.model_dump(exclude={"interface_id"}).items():
@@ -65,7 +70,10 @@ def upsert_target(payload: SlaTargetCreate, db: Session = Depends(get_db)) -> Sl
 
 @router.patch("/targets/{target_id}", response_model=SlaTargetOut)
 def update_target(
-    target_id: int, payload: SlaTargetUpdate, db: Session = Depends(get_db)
+    target_id: int,
+    payload: SlaTargetUpdate,
+    db: Session = Depends(get_db),
+    actor: User = Depends(require_role([UserRole.ADMIN])),
 ) -> SlaTargetOut:
     obj = db.get(SlaTarget, target_id)
     if not obj:

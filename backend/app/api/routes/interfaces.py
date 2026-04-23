@@ -1,16 +1,17 @@
 from __future__ import annotations
 
-from fastapi import APIRouter, Depends, HTTPException, Response, status
+from fastapi import APIRouter, Depends, HTTPException, Request, Response, status
 from sqlalchemy import select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
-from app.api.deps import get_db
+from app.api.deps import get_current_user, get_db, require_role
 from app.core.security import encrypt_secret
 from app.core.time import now_kst
-from app.models import Interface
+from app.models import Interface, User, UserRole
 from app.models.interface import ProtocolType
 from app.schemas.interface import InterfaceCreate, InterfaceOut, InterfaceUpdate
+from app.services.audit import record_audit
 
 router = APIRouter(prefix="/interfaces", tags=["interfaces"])
 
@@ -58,6 +59,7 @@ def list_interfaces(
     include_deleted: bool = False,
     only_deleted: bool = False,
     db: Session = Depends(get_db),
+    _: User = Depends(get_current_user),  # 모든 역할 가능 — 인증만 확인
 ) -> list[InterfaceOut]:
     stmt = select(Interface)
     if only_deleted:
@@ -74,7 +76,12 @@ def list_interfaces(
 
 
 @router.post("", response_model=InterfaceOut, status_code=status.HTTP_201_CREATED)
-def create_interface(payload: InterfaceCreate, db: Session = Depends(get_db)) -> InterfaceOut:
+def create_interface(
+    payload: InterfaceCreate,
+    request: Request,
+    db: Session = Depends(get_db),
+    actor: User = Depends(require_role([UserRole.ADMIN])),
+) -> InterfaceOut:
     data = payload.model_dump(exclude={"auth_secret"})
     obj = Interface(**data)
     if payload.auth_secret:
@@ -86,6 +93,12 @@ def create_interface(payload: InterfaceCreate, db: Session = Depends(get_db)) ->
         db.rollback()
         raise HTTPException(status.HTTP_409_CONFLICT, "interface name already exists") from e
     db.refresh(obj)
+    record_audit(
+        db, actor=actor, action="interface.create",
+        resource_type="interface", resource_id=obj.id,
+        after={k: v for k, v in data.items() if k != "auth_secret"},
+        request=request,
+    )
     return _to_out(obj)
 
 
@@ -99,7 +112,11 @@ def get_interface(interface_id: int, db: Session = Depends(get_db)) -> Interface
 
 @router.patch("/{interface_id}", response_model=InterfaceOut)
 def update_interface(
-    interface_id: int, payload: InterfaceUpdate, db: Session = Depends(get_db)
+    interface_id: int,
+    payload: InterfaceUpdate,
+    request: Request,
+    db: Session = Depends(get_db),
+    actor: User = Depends(require_role([UserRole.ADMIN])),
 ) -> InterfaceOut:
     obj = db.get(Interface, interface_id)
     if not obj:
@@ -107,6 +124,8 @@ def update_interface(
     if obj.deleted_at is not None:
         raise HTTPException(status.HTTP_400_BAD_REQUEST, "deleted interface — restore first")
     data = payload.model_dump(exclude_unset=True)
+    before_snapshot = {k: getattr(obj, k) for k in data if k != "auth_secret"}
+    # 시크릿 변경 여부만 별도 추적 (값은 절대 감사 로그에 안 남김)
     secret = data.pop("auth_secret", None)
     for k, v in data.items():
         setattr(obj, k, v)
@@ -114,11 +133,28 @@ def update_interface(
         obj.auth_secret = encrypt_secret(secret) if secret else None
     db.commit()
     db.refresh(obj)
+    record_audit(
+        db, actor=actor, action="interface.update",
+        resource_type="interface", resource_id=obj.id,
+        before=before_snapshot, after={k: v for k, v in data.items()},
+        request=request,
+    )
+    if secret is not None:
+        record_audit(
+            db, actor=actor, action="interface.secret_changed",
+            resource_type="interface", resource_id=obj.id,
+            request=request,
+        )
     return _to_out(obj)
 
 
 @router.delete("/{interface_id}", status_code=status.HTTP_204_NO_CONTENT, response_class=Response)
-def delete_interface(interface_id: int, db: Session = Depends(get_db)) -> Response:
+def delete_interface(
+    interface_id: int,
+    request: Request,
+    db: Session = Depends(get_db),
+    actor: User = Depends(require_role([UserRole.ADMIN])),
+) -> Response:
     """소프트 삭제 — deleted_at 만 마킹하고 **DB 행은 영구 보존**.
 
     cascade 로 묶인 call_logs / incidents / SLA targets 가 금감원 전산사고
@@ -136,6 +172,11 @@ def delete_interface(interface_id: int, db: Session = Depends(get_db)) -> Respon
         obj.deleted_at = now_kst()
         obj.enabled = False
         db.commit()
+        record_audit(
+            db, actor=actor, action="interface.archive",
+            resource_type="interface", resource_id=obj.id,
+            after={"name": obj.name}, request=request,
+        )
         try:
             from app.services.scheduler import sync_jobs
             sync_jobs()
@@ -145,7 +186,12 @@ def delete_interface(interface_id: int, db: Session = Depends(get_db)) -> Respon
 
 
 @router.post("/{interface_id}/restore", response_model=InterfaceOut)
-def restore_interface(interface_id: int, db: Session = Depends(get_db)) -> InterfaceOut:
+def restore_interface(
+    interface_id: int,
+    request: Request,
+    db: Session = Depends(get_db),
+    actor: User = Depends(require_role([UserRole.ADMIN])),
+) -> InterfaceOut:
     """보관 해제 (휴지통 → 활성). enabled 는 자동으로 켜지 않음 — 운영자가
     의도적으로 ``enabled`` 토글을 다시 켜야 cron 이 돌기 시작."""
     obj = db.get(Interface, interface_id)
@@ -156,4 +202,9 @@ def restore_interface(interface_id: int, db: Session = Depends(get_db)) -> Inter
     obj.deleted_at = None
     db.commit()
     db.refresh(obj)
+    record_audit(
+        db, actor=actor, action="interface.restore",
+        resource_type="interface", resource_id=obj.id,
+        request=request,
+    )
     return _to_out(obj)

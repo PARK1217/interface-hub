@@ -4,15 +4,15 @@ from datetime import datetime, timedelta
 
 import asyncio
 
-from fastapi import APIRouter, Depends, Header, HTTPException, Query, status as http_status
+from fastapi import APIRouter, Depends, Header, HTTPException, Query, Request, status as http_status
 from sqlalchemy import and_, func, select
 from sqlalchemy.orm import Session
 
-from app.api.deps import get_db
+from app.api.deps import get_current_user, get_db, get_optional_user, require_role
 from app.core.config import get_settings
 from app.core.time import now_kst
 from app.core.websocket import ws_manager
-from app.models import CallLog, Interface
+from app.models import CallLog, Interface, User, UserRole
 from app.models.call_log import CallStatus
 from app.models.interface import ProtocolType
 from app.schemas.call_log import (
@@ -25,6 +25,7 @@ from app.schemas.call_log import (
     IngestRequest,
     TimeSeriesPoint,
 )
+from app.services.audit import record_audit
 from app.services.executor import execute_interface
 
 router = APIRouter(prefix="/call-logs", tags=["call-logs"])
@@ -203,8 +204,11 @@ def heatmap(
 @router.post("/ingest", response_model=CallLogOut, status_code=http_status.HTTP_201_CREATED)
 async def ingest_call_log(
     payload: IngestRequest,
+    request: Request,
     x_ingest_key: str | None = Header(default=None, alias="X-Ingest-Key"),
     db: Session = Depends(get_db),
+    # 외부 시스템이 사용 → 사용자 로그인 + 헤더 키 양쪽 다 옵션. 둘 중 하나는 있어야.
+    actor: User | None = Depends(get_optional_user),
 ) -> CallLogOut:
     """Accept a call_log row pushed by another internal system.
 
@@ -213,8 +217,13 @@ async def ingest_call_log(
     that all observability stays centralized.
     """
     settings = get_settings()
-    if settings.ingest_api_key and x_ingest_key != settings.ingest_api_key:
-        raise HTTPException(http_status.HTTP_401_UNAUTHORIZED, "invalid X-Ingest-Key")
+    # 인증 정책: (1) 유효한 X-Ingest-Key OR (2) 로그인 토큰 — 둘 중 하나 필수
+    key_ok = settings.ingest_api_key and x_ingest_key == settings.ingest_api_key
+    if not key_ok and actor is None:
+        raise HTTPException(
+            http_status.HTTP_401_UNAUTHORIZED,
+            "X-Ingest-Key 헤더 또는 로그인 토큰이 필요합니다.",
+        )
 
     itf = db.get(Interface, payload.interface_id)
     if not itf:
@@ -232,6 +241,7 @@ async def ingest_call_log(
         error_trace=payload.error_trace,
         triggered_by="ingest",
         called_at=payload.called_at or now_kst(),
+        actor_user_id=actor.id if actor is not None else None,
     )
     db.add(log_row)
     db.commit()
@@ -264,19 +274,35 @@ async def ingest_call_log(
 # Reprocessing — 재처리
 # ============================================================================
 @router.post("/{log_id}/retry", response_model=CallLogOut)
-async def retry_call(log_id: int, db: Session = Depends(get_db)) -> CallLogOut:
+async def retry_call(
+    log_id: int,
+    request: Request,
+    db: Session = Depends(get_db),
+    actor: User = Depends(require_role([UserRole.OPERATOR, UserRole.ADMIN])),
+) -> CallLogOut:
     parent = db.get(CallLog, log_id)
     if not parent:
         raise HTTPException(http_status.HTTP_404_NOT_FOUND, "call log not found")
     itf = db.get(Interface, parent.interface_id)
     if not itf:
         raise HTTPException(http_status.HTTP_404_NOT_FOUND, "interface not found")
-    new_log = await execute_interface(itf, db, parent_log=parent)
+    new_log = await execute_interface(itf, db, parent_log=parent, actor=actor)
+    record_audit(
+        db, actor=actor, action="call_log.retry",
+        resource_type="call_log", resource_id=parent.id,
+        after={"new_log_id": new_log.id, "status": new_log.status.value},
+        request=request,
+    )
     return CallLogOut.model_validate(new_log)
 
 
 @router.post("/bulk-retry", response_model=BulkRetryResponse)
-async def bulk_retry(payload: BulkRetryRequest, db: Session = Depends(get_db)) -> BulkRetryResponse:
+async def bulk_retry(
+    payload: BulkRetryRequest,
+    request: Request,
+    db: Session = Depends(get_db),
+    actor: User = Depends(require_role([UserRole.OPERATOR, UserRole.ADMIN])),
+) -> BulkRetryResponse:
     stmt = select(CallLog)
     if payload.interface_id is not None:
         stmt = stmt.where(CallLog.interface_id == payload.interface_id)
@@ -301,10 +327,15 @@ async def bulk_retry(payload: BulkRetryRequest, db: Session = Depends(get_db)) -
             skipped += 1
             continue
         try:
-            new_log = await execute_interface(itf, db, parent_log=p)
+            new_log = await execute_interface(itf, db, parent_log=p, actor=actor)
             new_ids.append(new_log.id)
         except Exception:  # noqa: BLE001 — keep going through the batch
             skipped += 1
+    record_audit(
+        db, actor=actor, action="call_log.bulk_retry",
+        after={"submitted": len(new_ids), "skipped": skipped, "filter": payload.model_dump()},
+        request=request,
+    )
     return BulkRetryResponse(submitted=len(new_ids), skipped=skipped, new_log_ids=new_ids)
 
 

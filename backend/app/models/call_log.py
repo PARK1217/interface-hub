@@ -48,4 +48,11 @@ class CallLog(Base):
     retry_count: Mapped[int] = mapped_column(Integer, default=0)
     is_reprocessed: Mapped[bool] = mapped_column(Boolean, default=False, index=True)
 
+    # --- actor (Phase A) -------------------------------------------------------
+    # manual / reprocess / ingest 호출 시 어느 사용자가 트리거했는지.
+    # schedule (cron) 호출은 NULL.
+    actor_user_id: Mapped[int | None] = mapped_column(
+        ForeignKey("users.id", ondelete="SET NULL"), default=None, index=True
+    )
+
     interface: Mapped["Interface"] = relationship(back_populates="call_logs", lazy="noload")  # noqa: F821

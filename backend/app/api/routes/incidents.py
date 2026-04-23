@@ -2,17 +2,18 @@ from __future__ import annotations
 
 from typing import Literal
 
-from fastapi import APIRouter, Depends, HTTPException, Query, status
+from fastapi import APIRouter, Depends, HTTPException, Query, Request, status
 from pydantic import BaseModel
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from app.api.deps import get_db
+from app.api.deps import get_current_user, get_db, require_role
 from app.core.time import now_kst
-from app.models import CallLog, Incident, Interface
+from app.models import CallLog, Incident, Interface, User, UserRole
 from app.models.call_log import CallStatus
 from app.schemas.call_log import BulkRetryResponse, CallLogOut
 from app.schemas.incident import IncidentCreate, IncidentOut, IncidentUpdate
+from app.services.audit import record_audit
 from app.services.executor import execute_interface
 from app.services.incident_helpers import mark_related_handled, related_log_query
 
@@ -84,7 +85,11 @@ def update_incident(
 
 @router.post("/{incident_id}/resolve", response_model=IncidentOut)
 def resolve_incident(
-    incident_id: int, resolution: str | None = None, db: Session = Depends(get_db)
+    incident_id: int,
+    request: Request,
+    resolution: str | None = None,
+    db: Session = Depends(get_db),
+    actor: User = Depends(require_role([UserRole.OPERATOR, UserRole.ADMIN])),
 ) -> IncidentOut:
     obj = db.get(Incident, incident_id)
     if not obj:
@@ -100,6 +105,12 @@ def resolve_incident(
     handled = mark_related_handled(db, obj, itf)
     db.commit()
     db.refresh(obj)
+    record_audit(
+        db, actor=actor, action="incident.resolve",
+        resource_type="incident", resource_id=obj.id,
+        after={"handled_logs": handled, "resolution": resolution},
+        request=request,
+    )
     return _to_out(db, obj)
 
 
@@ -127,7 +138,9 @@ class IncidentRetryRequest(BaseModel):
 async def retry_related(
     incident_id: int,
     payload: IncidentRetryRequest,
+    request: Request,
     db: Session = Depends(get_db),
+    actor: User = Depends(require_role([UserRole.OPERATOR, UserRole.ADMIN])),
 ) -> BulkRetryResponse:
     """incident 에 묶인 call_logs 일괄 재처리.
 
@@ -160,8 +173,14 @@ async def retry_related(
     skipped = 0
     for parent in parents:
         try:
-            new_log = await execute_interface(itf, db, parent_log=parent)
+            new_log = await execute_interface(itf, db, parent_log=parent, actor=actor)
             new_ids.append(new_log.id)
         except Exception:  # noqa: BLE001
             skipped += 1
+    record_audit(
+        db, actor=actor, action="incident.retry_related",
+        resource_type="incident", resource_id=obj.id,
+        after={"mode": payload.mode, "submitted": len(new_ids), "skipped": skipped},
+        request=request,
+    )
     return BulkRetryResponse(submitted=len(new_ids), skipped=skipped, new_log_ids=new_ids)

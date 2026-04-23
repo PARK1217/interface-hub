@@ -63,6 +63,9 @@ _DEMO_MIGRATIONS: list[str] = [
     # 인터페이스 소프트 삭제 (deleted_at 만 마킹, hard delete 절대 X)
     "ALTER TABLE interfaces ADD COLUMN IF NOT EXISTS deleted_at TIMESTAMPTZ",
     "CREATE INDEX IF NOT EXISTS ix_interfaces_deleted_at ON interfaces(deleted_at)",
+    # Phase A: call_logs 에 행위자 추적 (manual/reprocess/ingest 시 누가 했는지)
+    "ALTER TABLE call_logs ADD COLUMN IF NOT EXISTS actor_user_id INTEGER REFERENCES users(id) ON DELETE SET NULL",
+    "CREATE INDEX IF NOT EXISTS ix_call_logs_actor_user_id ON call_logs(actor_user_id)",
 ]
 
 

@@ -341,6 +341,7 @@ async def execute_interface(
     *,
     triggered_by: str = "manual",
     parent_log: CallLog | None = None,
+    actor: "User | None" = None,  # noqa: F821 — 순환 임포트 회피
 ) -> CallLog:
     """인터페이스 1회 실행 → CallLog 저장 → broadcast/detect.
 
@@ -394,6 +395,7 @@ async def execute_interface(
         triggered_by="reprocess" if parent_log is not None else triggered_by,
         parent_log_id=parent_log.id if parent_log is not None else None,
         retry_count=(parent_log.retry_count + 1) if parent_log is not None else 0,
+        actor_user_id=actor.id if actor is not None else None,
     )
     db.add(log_row)
     if parent_log is not None and not parent_log.is_reprocessed:

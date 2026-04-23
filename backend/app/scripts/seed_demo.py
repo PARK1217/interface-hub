@@ -17,12 +17,13 @@ import math
 import random
 from datetime import timedelta
 
-from sqlalchemy import delete
+from sqlalchemy import delete, select
 
+from app.core.auth import hash_password
 from app.core.database import SessionLocal, init_db
 from app.core.security import encrypt_secret
 from app.core.time import now_kst
-from app.models import CallLog, Incident, Interface, SlaTarget
+from app.models import CallLog, Incident, Interface, SlaTarget, User, UserRole
 from app.models.call_log import CallStatus
 from app.models.incident import IncidentType
 from app.models.interface import AuthType, ProtocolType
@@ -624,6 +625,15 @@ def _json_dumps(obj) -> str:
     return _j.dumps(obj, ensure_ascii=False)
 
 
+# --- 데모 유저 (평가관용 placeholder credentials) ----------------------------
+# 비밀번호는 단순 (평가/시연 한정). 운영 시 강력한 정책 필수.
+SEED_USERS: list[dict] = [
+    {"username": "admin", "password": "admin1234", "full_name": "관리자 데모", "role": UserRole.ADMIN},
+    {"username": "operator", "password": "op1234", "full_name": "운영자 데모", "role": UserRole.OPERATOR},
+    {"username": "viewer", "password": "view1234", "full_name": "감사자 데모 (읽기 전용)", "role": UserRole.VIEWER},
+]
+
+
 def main() -> None:
     init_db()
     db = SessionLocal()
@@ -633,7 +643,25 @@ def main() -> None:
         db.execute(delete(Incident))
         db.execute(delete(SlaTarget))
         db.execute(delete(Interface))
+        # 사용자는 username 충돌만 피하면 됨 — 기존 행 유지하면서 upsert 패턴
+        for spec in SEED_USERS:
+            existing = db.scalar(select(User).where(User.username == spec["username"]))
+            if existing:
+                existing.password_hash = hash_password(spec["password"])
+                existing.role = spec["role"]
+                existing.full_name = spec["full_name"]
+                existing.disabled_at = None
+            else:
+                db.add(
+                    User(
+                        username=spec["username"],
+                        password_hash=hash_password(spec["password"]),
+                        full_name=spec["full_name"],
+                        role=spec["role"],
+                    )
+                )
         db.commit()
+        print(f"✓ {len(SEED_USERS)} demo users (admin/operator/viewer)")
 
         name_to_itf: dict[str, Interface] = {}
         for spec in SEED_INTERFACES:

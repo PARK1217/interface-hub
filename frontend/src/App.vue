@@ -1,5 +1,8 @@
 <template>
-  <v-app>
+  <!-- 로그인 화면은 자체 레이아웃 (Login.vue 가 v-app 직접 렌더) -->
+  <router-view v-if="$route.path === '/login'" />
+
+  <v-app v-else>
     <v-navigation-drawer permanent color="primary" theme="dark" class="no-print">
       <v-list-item class="pa-4">
         <template #prepend>
@@ -27,6 +30,29 @@
         <v-icon start :icon="connected ? 'mdi-wifi' : 'mdi-wifi-off'" />
         {{ connected ? 'LIVE' : 'OFFLINE' }}
       </v-chip>
+      <v-menu v-if="auth.user" offset="6">
+        <template #activator="{ props }">
+          <v-btn v-bind="props" variant="text" class="mr-2">
+            <v-icon start icon="mdi-account-circle-outline" />
+            {{ auth.user.full_name || auth.user.username }}
+            <v-chip class="ml-2" size="x-small" :color="roleColor">
+              {{ auth.user.role }}
+            </v-chip>
+          </v-btn>
+        </template>
+        <v-list density="compact">
+          <v-list-item disabled>
+            <v-list-item-title class="text-caption">{{ auth.user.username }}</v-list-item-title>
+            <v-list-item-subtitle class="text-caption">
+              마지막 로그인: {{ formatDateTimeShort(auth.user.last_login_at) || '-' }}
+            </v-list-item-subtitle>
+          </v-list-item>
+          <v-divider />
+          <v-list-item prepend-icon="mdi-logout" @click="onLogout">
+            <v-list-item-title>로그아웃</v-list-item-title>
+          </v-list-item>
+        </v-list>
+      </v-menu>
     </v-app-bar>
 
     <v-main>
@@ -39,10 +65,14 @@
 
 <script setup lang="ts">
 import { computed, onMounted, ref } from 'vue';
-import { useRoute } from 'vue-router';
+import { useRoute, useRouter } from 'vue-router';
 import { subscribe } from '@/api/socket';
+import { useAuthStore } from '@/stores/auth';
+import { formatDateTimeShort } from '@/utils/format';
 
 const route = useRoute();
+const router = useRouter();
+const auth = useAuthStore();
 const connected = ref(false);
 
 const routes = [
@@ -57,11 +87,24 @@ const routes = [
 
 const currentTitle = computed(() => (route.meta?.title as string) ?? 'NOA Interface Hub');
 
+const roleColor = computed(() => {
+  switch (auth.user?.role) {
+    case 'ADMIN': return 'error';
+    case 'OPERATOR': return 'warning';
+    case 'VIEWER': return 'info';
+    default: return 'grey';
+  }
+});
+
+async function onLogout() {
+  await auth.logout();
+  router.push('/login');
+}
+
 onMounted(() => {
   subscribe(() => {
     connected.value = true;
   });
-  // mark connected on first frame; socket re-establishes itself if dropped
   setTimeout(() => (connected.value = true), 500);
 });
 </script>

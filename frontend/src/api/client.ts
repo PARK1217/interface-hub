@@ -5,6 +5,35 @@ export const api = axios.create({
   timeout: 15000,
 });
 
+// 모든 요청에 JWT 자동 첨부 (있으면)
+api.interceptors.request.use((cfg) => {
+  const t = localStorage.getItem('noahub_token');
+  if (t) {
+    cfg.headers = cfg.headers ?? {};
+    cfg.headers.Authorization = `Bearer ${t}`;
+  }
+  return cfg;
+});
+
+// 401 응답 시 자동 로그아웃 + 로그인 페이지 이동.
+// (auth/login 자체의 401 은 폼 에러로 표시해야 하므로 제외)
+api.interceptors.response.use(
+  (r) => r,
+  (err) => {
+    const status = err?.response?.status;
+    const url = err?.config?.url ?? '';
+    if (status === 401 && !url.includes('/auth/login')) {
+      localStorage.removeItem('noahub_token');
+      localStorage.removeItem('noahub_user');
+      localStorage.removeItem('noahub_expires');
+      if (location.pathname !== '/login') {
+        location.href = '/login?reason=expired';
+      }
+    }
+    return Promise.reject(err);
+  },
+);
+
 export interface InterfaceItem {
   id: number;
   name: string;

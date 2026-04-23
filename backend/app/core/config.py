@@ -38,6 +38,12 @@ class Settings(BaseSettings):
     # Leave blank for open ingest (development).
     ingest_api_key: str | None = None
 
+    # JWT (Phase A 인증)
+    # 토큰 서명 키. 운영에서는 별도 32바이트 시크릿 사용 권장 (지금은 SECRET_KEY 재사용).
+    jwt_secret: str | None = None
+    jwt_algorithm: str = "HS256"
+    jwt_ttl_minutes: int = 240  # 4시간
+
     cors_origins: list[str] = ["http://localhost:5173", "http://127.0.0.1:5173"]
 
 
