@@ -58,3 +58,17 @@ class TimeSeriesPoint(BaseModel):
     success: int
     failure: int
     avg_duration_ms: float
+
+
+class HeatmapCell(BaseModel):
+    hour: int  # 0~23 KST
+    count: int
+    failure_rate: float
+
+
+class HeatmapRow(BaseModel):
+    interface_id: int
+    interface_name: str
+    protocol: str
+    organization: str | None = None
+    cells: list[HeatmapCell]

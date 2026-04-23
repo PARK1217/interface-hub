@@ -10,11 +10,14 @@ from app.api.deps import get_db
 from app.core.time import now_kst
 from app.models import CallLog, Interface
 from app.models.call_log import CallStatus
+from app.models.interface import ProtocolType
 from app.schemas.call_log import (
     BulkRetryRequest,
     BulkRetryResponse,
     CallLogOut,
     CallLogStats,
+    HeatmapCell,
+    HeatmapRow,
     TimeSeriesPoint,
 )
 from app.services.executor import execute_interface
@@ -44,6 +47,18 @@ def _filters(
     return and_(*conds) if conds else None
 
 
+def _scope_by_interface(stmt, protocol: ProtocolType | None, organization: str | None):
+    """Join + scope a CallLog query by interface attributes (protocol/organization)."""
+    if protocol is None and organization is None:
+        return stmt
+    stmt = stmt.join(Interface, Interface.id == CallLog.interface_id)
+    if protocol is not None:
+        stmt = stmt.where(Interface.protocol == protocol)
+    if organization:
+        stmt = stmt.where(Interface.organization == organization)
+    return stmt
+
+
 @router.get("", response_model=list[CallLogOut])
 def search_call_logs(
     interface_id: int | None = None,
@@ -51,6 +66,8 @@ def search_call_logs(
     keyword: str | None = None,
     since: datetime | None = None,
     until: datetime | None = None,
+    protocol: ProtocolType | None = None,
+    organization: str | None = None,
     limit: int = Query(100, ge=1, le=1000),
     offset: int = Query(0, ge=0),
     db: Session = Depends(get_db),
@@ -59,6 +76,7 @@ def search_call_logs(
     where = _filters(interface_id, status, keyword, since, until)
     if where is not None:
         stmt = stmt.where(where)
+    stmt = _scope_by_interface(stmt, protocol, organization)
     stmt = stmt.order_by(CallLog.called_at.desc()).limit(limit).offset(offset)
     return [CallLogOut.model_validate(r) for r in db.scalars(stmt).all()]
 
@@ -115,6 +133,59 @@ def timeseries(
         out.append(
             TimeSeriesPoint(
                 bucket=key, total=total, success=success, failure=total - success, avg_duration_ms=avg
+            )
+        )
+    return out
+
+
+# ============================================================================
+# Heatmap — 시간대 × 인터페이스 호출 빈도
+# ============================================================================
+@router.get("/heatmap", response_model=list[HeatmapRow])
+def heatmap(
+    days: int = Query(7, ge=1, le=30),
+    protocol: ProtocolType | None = None,
+    organization: str | None = None,
+    db: Session = Depends(get_db),
+) -> list[HeatmapRow]:
+    """Aggregate calls into a 24-hour-of-day × interface grid (KST)."""
+    since = now_kst() - timedelta(days=days)
+    iface_stmt = select(Interface).order_by(Interface.id)
+    if protocol is not None:
+        iface_stmt = iface_stmt.where(Interface.protocol == protocol)
+    if organization:
+        iface_stmt = iface_stmt.where(Interface.organization == organization)
+    interfaces = db.scalars(iface_stmt).all()
+
+    out: list[HeatmapRow] = []
+    for itf in interfaces:
+        rows = db.scalars(
+            select(CallLog)
+            .where(CallLog.interface_id == itf.id)
+            .where(CallLog.called_at >= since)
+        ).all()
+        buckets: dict[int, list[CallLog]] = {h: [] for h in range(24)}
+        for r in rows:
+            buckets[r.called_at.hour].append(r)
+        cells = []
+        for h in range(24):
+            bucket = buckets[h]
+            total = len(bucket)
+            failures = sum(1 for r in bucket if r.status != CallStatus.SUCCESS)
+            cells.append(
+                HeatmapCell(
+                    hour=h,
+                    count=total,
+                    failure_rate=round(failures / total, 3) if total else 0.0,
+                )
+            )
+        out.append(
+            HeatmapRow(
+                interface_id=itf.id,
+                interface_name=itf.name,
+                protocol=itf.protocol.value,
+                organization=itf.organization,
+                cells=cells,
             )
         )
     return out

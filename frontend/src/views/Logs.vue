@@ -26,13 +26,16 @@
           <v-col cols="12" md="2">
             <v-select v-model="filter.status" :items="statuses" label="상태" clearable density="compact" />
           </v-col>
+          <v-col cols="12" md="2">
+            <v-select v-model="filter.protocol" :items="protocols" label="프로토콜" clearable density="compact" />
+          </v-col>
           <v-col cols="12" md="3">
             <v-text-field v-model="filter.keyword" label="에러 메시지 키워드" clearable density="compact" />
           </v-col>
-          <v-col cols="12" md="3">
-            <v-switch v-model="filter.failedOnly" hide-details color="warning" label="실패만 (재처리 가능)" density="compact" />
+          <v-col cols="12" md="2">
+            <v-switch v-model="filter.failedOnly" hide-details color="warning" label="실패만" density="compact" />
           </v-col>
-          <v-col cols="12" md="2" class="d-flex align-center">
+          <v-col cols="12" md="1" class="d-flex align-center">
             <v-btn block color="primary" @click="load" :loading="loading">검색</v-btn>
           </v-col>
         </v-row>
@@ -261,6 +264,7 @@ import { CallLogs, type CallLogItem } from '@/api/client';
 import { formatDateTime } from '@/utils/format';
 
 const statuses = ['SUCCESS', 'FAILURE', 'TIMEOUT', 'AUTH_ERROR', 'FORMAT_ERROR', 'SERVER_ERROR'];
+const protocols = ['REST', 'SOAP', 'FTP', 'MQ', 'BATCH'];
 const headers = [
   { title: '시각', key: 'called_at' },
   { title: 'IF', key: 'interface_id', width: 50 },
@@ -287,9 +291,10 @@ const snack = reactive({ show: false, text: '', color: 'success' });
 const filter = reactive<{
   interface_id: number | null;
   status: string | null;
+  protocol: string | null;
   keyword: string;
   failedOnly: boolean;
-}>({ interface_id: null, status: null, keyword: '', failedOnly: false });
+}>({ interface_id: null, status: null, protocol: null, keyword: '', failedOnly: false });
 
 function notify(text: string, color = 'success') {
   Object.assign(snack, { show: true, text, color });
@@ -306,6 +311,7 @@ async function load() {
     const params: Record<string, unknown> = { limit: 200 };
     if (filter.interface_id) params.interface_id = filter.interface_id;
     if (filter.status) params.status = filter.status;
+    if (filter.protocol) params.protocol = filter.protocol;
     if (filter.keyword) params.keyword = filter.keyword;
     let data = (await CallLogs.search(params)).data;
     if (filter.failedOnly) {

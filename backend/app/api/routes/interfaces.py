@@ -7,6 +7,7 @@ from sqlalchemy.orm import Session
 
 from app.core.security import encrypt_secret
 from app.models import Interface
+from app.models.interface import ProtocolType
 from app.schemas.interface import InterfaceCreate, InterfaceOut, InterfaceUpdate
 from app.api.deps import get_db
 
@@ -23,6 +24,7 @@ def _to_out(i: Interface) -> InterfaceOut:
 def list_interfaces(
     enabled: bool | None = None,
     organization: str | None = None,
+    protocol: ProtocolType | None = None,
     db: Session = Depends(get_db),
 ) -> list[InterfaceOut]:
     stmt = select(Interface)
@@ -30,6 +32,8 @@ def list_interfaces(
         stmt = stmt.where(Interface.enabled == enabled)
     if organization:
         stmt = stmt.where(Interface.organization == organization)
+    if protocol is not None:
+        stmt = stmt.where(Interface.protocol == protocol)
     return [_to_out(i) for i in db.scalars(stmt.order_by(Interface.id.desc())).all()]
 
 

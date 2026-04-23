@@ -83,7 +83,7 @@ export interface SlaReportRow {
 }
 
 export const Interfaces = {
-  list: () => api.get<InterfaceItem[]>('/interfaces'),
+  list: (params: Record<string, unknown> = {}) => api.get<InterfaceItem[]>('/interfaces', { params }),
   create: (payload: Partial<InterfaceItem> & { auth_secret?: string }) =>
     api.post<InterfaceItem>('/interfaces', payload),
   update: (id: number, payload: Partial<InterfaceItem> & { auth_secret?: string }) =>
@@ -92,10 +92,26 @@ export const Interfaces = {
   execute: (id: number) => api.post<CallLogItem>(`/interfaces/${id}/execute`),
 };
 
+export interface HeatmapCell {
+  hour: number;
+  count: number;
+  failure_rate: number;
+}
+
+export interface HeatmapRow {
+  interface_id: number;
+  interface_name: string;
+  protocol: string;
+  organization: string | null;
+  cells: HeatmapCell[];
+}
+
 export const CallLogs = {
   search: (params: Record<string, unknown> = {}) => api.get<CallLogItem[]>('/call-logs', { params }),
   stats: (params: Record<string, unknown> = {}) => api.get('/call-logs/stats', { params }),
   timeseries: (params: Record<string, unknown> = {}) => api.get('/call-logs/timeseries', { params }),
+  heatmap: (params: Record<string, unknown> = {}) =>
+    api.get<HeatmapRow[]>('/call-logs/heatmap', { params }),
   retry: (id: number) => api.post<CallLogItem>(`/call-logs/${id}/retry`),
   bulkRetry: (payload: BulkRetryRequest) =>
     api.post<BulkRetryResponse>('/call-logs/bulk-retry', payload),

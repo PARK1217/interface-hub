@@ -6,6 +6,48 @@
       <v-btn color="primary" prepend-icon="mdi-plus" @click="openCreate">새 인터페이스</v-btn>
     </div>
 
+    <v-card class="mb-4">
+      <v-card-text>
+        <v-row dense>
+          <v-col cols="12" md="3">
+            <v-select
+              v-model="filter.protocol"
+              :items="protocolOptions"
+              label="프로토콜"
+              clearable
+              density="compact"
+              hide-details
+              @update:model-value="load"
+            />
+          </v-col>
+          <v-col cols="12" md="4">
+            <v-select
+              v-model="filter.organization"
+              :items="organizationOptions"
+              label="기관"
+              clearable
+              density="compact"
+              hide-details
+              @update:model-value="load"
+            />
+          </v-col>
+          <v-col cols="12" md="2">
+            <v-switch
+              v-model="filter.enabledOnly"
+              label="활성만"
+              hide-details
+              density="compact"
+              color="primary"
+              @update:model-value="load"
+            />
+          </v-col>
+          <v-col cols="12" md="3" class="d-flex align-center justify-end">
+            <span class="text-caption text-medium-emphasis">{{ rows.length }}건</span>
+          </v-col>
+        </v-row>
+      </v-card-text>
+    </v-card>
+
     <v-card>
       <v-data-table
         :headers="headers"
@@ -75,8 +117,20 @@
 </template>
 
 <script setup lang="ts">
-import { onMounted, reactive, ref } from 'vue';
+import { computed, onMounted, reactive, ref } from 'vue';
 import { Interfaces, type InterfaceItem } from '@/api/client';
+
+const protocolOptions = ['REST', 'SOAP', 'FTP', 'MQ', 'BATCH'];
+
+const filter = reactive<{ protocol: string | null; organization: string | null; enabledOnly: boolean }>({
+  protocol: null,
+  organization: null,
+  enabledOnly: false,
+});
+
+const organizationOptions = computed(() =>
+  Array.from(new Set(rows.value.map((r) => r.organization).filter(Boolean))) as string[],
+);
 
 const headers = [
   { title: 'ID', key: 'id', width: 60 },
@@ -114,7 +168,11 @@ function notify(text: string, color = 'success') {
 async function load() {
   loading.value = true;
   try {
-    rows.value = (await Interfaces.list()).data;
+    const params: Record<string, unknown> = {};
+    if (filter.protocol) params.protocol = filter.protocol;
+    if (filter.organization) params.organization = filter.organization;
+    if (filter.enabledOnly) params.enabled = true;
+    rows.value = (await Interfaces.list(params)).data;
   } finally {
     loading.value = false;
   }
