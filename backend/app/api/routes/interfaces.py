@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, Response, status
 from sqlalchemy import select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
@@ -75,10 +75,11 @@ def update_interface(
     return _to_out(obj)
 
 
-@router.delete("/{interface_id}", status_code=status.HTTP_204_NO_CONTENT)
-def delete_interface(interface_id: int, db: Session = Depends(get_db)) -> None:
+@router.delete("/{interface_id}", status_code=status.HTTP_204_NO_CONTENT, response_class=Response)
+def delete_interface(interface_id: int, db: Session = Depends(get_db)) -> Response:
     obj = db.get(Interface, interface_id)
     if not obj:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "interface not found")
     db.delete(obj)
     db.commit()
+    return Response(status_code=status.HTTP_204_NO_CONTENT)

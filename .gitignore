@@ -144,16 +144,90 @@ ENV/
 env.bak/
 venv.bak/
 
-# Node / Vue
+# =====================================================================
+# Frontend (Node / Vue / Vite / TypeScript)
+# =====================================================================
 node_modules/
 dist/
+dist-ssr/
 .vite/
-*.log
-.DS_Store
+.vite-cache/
+.cache/
+.parcel-cache/
+.nuxt/
+.output/
+.vercel/
+.netlify/
+coverage/
+.nyc_output/
+*.tsbuildinfo
+*.local
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+.pnpm-store/
 
-# Project temp
+# Generic logs
+*.log
+logs/
+
+# =====================================================================
+# IDE / Editor
+# =====================================================================
+.idea/
+.vscode/
+!.vscode/extensions.json
+!.vscode/settings.json.example
+*.iml
+*.ipr
+*.iws
+*.sublime-project
+*.sublime-workspace
+*.swp
+*.swo
+.history/
+
+# =====================================================================
+# OS
+# =====================================================================
+# macOS
+.DS_Store
+.AppleDouble
+.LSOverride
+._*
+.Spotlight-V100
+.Trashes
+# Windows
+Thumbs.db
+ehthumbs.db
+Desktop.ini
+$RECYCLE.BIN/
+*.lnk
+# Linux
+*~
+.directory
+.Trash-*
+
+# =====================================================================
+# Docker / Container
+# =====================================================================
+docker-compose.override.yml
+docker-compose.*.local.yml
+.dockerignore.local
+
+# =====================================================================
+# Project local artifacts
+# =====================================================================
 _extract_pptx.py
+_smoke.py
+backend/_smoke.py
 faiss_index/
+*.db
+*.sqlite3
+스크린샷*.png
+screenshot*.png
+Screenshot*.png
 
 # Spyder project settings
 .spyderproject
