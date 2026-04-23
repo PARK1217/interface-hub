@@ -55,6 +55,10 @@ class Interface(Base):
     updated_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now(), onupdate=func.now()
     )
+    # Soft-delete marker. Null = active. Non-null = in trash (kept for audit).
+    deleted_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), default=None, index=True
+    )
 
     call_logs: Mapped[list["CallLog"]] = relationship(  # noqa: F821
         back_populates="interface", cascade="all, delete-orphan", lazy="noload"

@@ -128,7 +128,7 @@ const heatRows = ref<HeatmapRow[]>([]);
 
 const heatSeries = computed(() =>
   heatRows.value.map((r) => ({
-    name: `#${r.interface_id} ${r.interface_name}`,
+    name: `#${r.interface_id} ${r.interface_name}${r.deleted_at ? ' (보관)' : ''}`,
     data: r.cells.map((c) => ({
       x: String(c.hour).padStart(2, '0'),
       y: heatMode.value === 'count' ? c.count : Math.round(c.failure_rate * 1000) / 10,

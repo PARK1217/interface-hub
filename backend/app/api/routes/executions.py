@@ -20,5 +20,7 @@ async def execute_now(
     obj = db.get(Interface, interface_id)
     if not obj:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "interface not found")
+    if obj.deleted_at is not None:
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, "interface is deleted — restore first")
     log = await execute_interface(obj, db, triggered_by="manual")
     return CallLogOut.model_validate(log)

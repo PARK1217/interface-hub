@@ -14,6 +14,7 @@ python-multipart==0.0.20
 websockets==14.1
 croniter==5.0.1
 paramiko==3.5.0
+openpyxl==3.1.5
 # Phase 2
 aiosmtplib==3.0.2
 # Phase 3 (optional, AI)

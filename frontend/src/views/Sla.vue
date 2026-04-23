@@ -1,13 +1,132 @@
 <template>
-  <div>
-    <div class="d-flex align-center mb-4">
+  <div class="sla-report">
+    <div class="d-flex align-center mb-4 no-print">
       <h2 class="text-h5">SLA 리포트</h2>
       <v-spacer />
-      <v-select v-model="days" :items="[7, 14, 30, 90]" label="기간(일)" density="compact" hide-details style="max-width:140px" @update:model-value="load" />
+      <v-select
+        v-model="days"
+        :items="periodOptions"
+        item-title="label"
+        item-value="value"
+        label="기간"
+        density="compact"
+        hide-details
+        style="max-width:180px"
+        class="mr-2"
+        @update:model-value="load"
+      />
+      <v-btn
+        prepend-icon="mdi-microsoft-excel"
+        color="success"
+        variant="elevated"
+        size="small"
+        :href="excelHref"
+        download
+      >
+        Excel
+      </v-btn>
+      <v-btn
+        prepend-icon="mdi-printer"
+        color="primary"
+        variant="tonal"
+        size="small"
+        class="ml-2"
+        @click="printReport"
+      >
+        프린트 / PDF 저장
+      </v-btn>
     </div>
 
+    <!-- Print-only header -->
+    <div class="print-only mb-3">
+      <h2>NOA Interface Hub — SLA 리포트</h2>
+      <div class="text-caption">
+        기간: 최근 {{ days }}일 · 생성: {{ printedAt }}
+      </div>
+    </div>
+
+    <!-- Section 1: KPI summary -->
+    <v-row class="mb-2">
+      <v-col cols="12" md="3" v-for="kpi in kpis" :key="kpi.label">
+        <v-card variant="elevated">
+          <v-card-text>
+            <div class="text-caption text-medium-emphasis">{{ kpi.label }}</div>
+            <div class="text-h5 mt-1" :class="kpi.color">{{ kpi.value }}</div>
+            <div class="text-caption text-medium-emphasis mt-1">{{ kpi.hint }}</div>
+          </v-card-text>
+        </v-card>
+      </v-col>
+    </v-row>
+
+    <!-- Section 2: monthly/quarterly trend -->
+    <v-card class="mb-4">
+      <v-card-title class="d-flex align-center flex-wrap">
+        <span class="text-subtitle-1">
+          {{ trendBucket === 'quarter' ? '분기별' : '월별' }} 가동률 추이
+        </span>
+        <v-chip class="ml-3" size="x-small" variant="tonal" color="grey">
+          {{ trendBucket === 'quarter' ? '180일 초과 자동 분기 단위' : '180일 이하 자동 월 단위' }}
+        </v-chip>
+      </v-card-title>
+      <v-card-text>
+        <apexchart
+          v-if="trendSeries.length"
+          type="bar"
+          height="360"
+          :options="trendOpts"
+          :series="trendSeries"
+        />
+        <div v-else class="text-medium-emphasis">집계할 데이터가 없습니다 (기간을 늘려보세요).</div>
+      </v-card-text>
+    </v-card>
+
+    <!-- Section 3: calendar heatmap -->
+    <v-card class="mb-4">
+      <v-card-title class="text-subtitle-1 d-flex align-center flex-wrap">
+        <span>일별 SLA 충족 캘린더</span>
+        <v-chip
+          v-if="days > 90"
+          class="ml-3"
+          size="x-small"
+          color="info"
+          variant="tonal"
+          prepend-icon="mdi-information-outline"
+        >
+          시각 가독성 한계로 최근 90일만 표시 — 전체 기간 데이터는 Excel 참조
+        </v-chip>
+      </v-card-title>
+      <v-card-subtitle class="text-caption">
+        🟢 가동률·응답 모두 목표 달성 · 🟡 한쪽만 달성 · 🟥 미달 · ⚪ 데이터 없음
+      </v-card-subtitle>
+      <v-card-text>
+        <apexchart
+          v-if="calSeries.length"
+          type="heatmap"
+          :height="60 + 30 * calSeries.length"
+          :options="calOpts"
+          :series="calSeries"
+        />
+        <div v-else class="text-medium-emphasis">데이터 없음</div>
+      </v-card-text>
+    </v-card>
+
+    <!-- Section 4: summary table -->
     <v-card>
+      <v-card-title class="text-subtitle-1">인터페이스별 누적 ({{ days }}일)</v-card-title>
       <v-data-table :headers="headers" :items="rows" :loading="loading" density="comfortable">
+        <template #item.interface_name="{ item }">
+          <span>{{ item.interface_name }}</span>
+          <v-chip
+            v-if="item.deleted_at"
+            size="x-small"
+            color="grey"
+            variant="tonal"
+            prepend-icon="mdi-archive-outline"
+            class="ml-2"
+          >
+            보관
+          </v-chip>
+        </template>
         <template #item.uptime_pct="{ item }">
           <v-chip size="small" :color="item.meets_uptime ? 'success' : 'error'">
             {{ item.uptime_pct.toFixed(2) }}% / 목표 {{ item.target_uptime }}%
@@ -24,8 +143,13 @@
 </template>
 
 <script setup lang="ts">
-import { onMounted, ref } from 'vue';
-import { Sla, type SlaReportRow } from '@/api/client';
+import { computed, onMounted, ref } from 'vue';
+import {
+  Sla,
+  type SlaCalendarCell,
+  type SlaReportRow,
+  type SlaTrendPoint,
+} from '@/api/client';
 
 const headers = [
   { title: 'IF', key: 'interface_id', width: 60 },
@@ -34,18 +158,274 @@ const headers = [
   { title: '평균 응답', key: 'avg_response_ms' },
 ];
 
+const periodOptions = [
+  { value: 7, label: '최근 7일' },
+  { value: 14, label: '최근 14일' },
+  { value: 30, label: '최근 30일' },
+  { value: 60, label: '최근 60일' },
+  { value: 90, label: '최근 90일 (분기)' },
+  { value: 180, label: '최근 180일 (반기)' },
+  { value: 365, label: '최근 365일 (연간)' },
+];
+
 const rows = ref<SlaReportRow[]>([]);
+const trendRows = ref<SlaTrendPoint[]>([]);
+const calRows = ref<SlaCalendarCell[]>([]);
 const days = ref(30);
 const loading = ref(false);
+const printedAt = ref('');
+
+// Auto-pick trend bucket based on selected period:
+// short period → monthly (more granular); long period → quarterly (less crowded)
+const trendBucket = computed<'month' | 'quarter'>(() =>
+  days.value > 180 ? 'quarter' : 'month',
+);
+const trendMonths = computed(() =>
+  Math.max(3, Math.min(24, Math.ceil(days.value / 30) + 2)),
+);
+// Calendar heatmap is always capped at 90 days for visual readability
+const calendarDays = computed(() => Math.min(90, days.value));
+
+const excelHref = computed(() => Sla.exportXlsxUrl(days.value));
+
+const kpis = computed(() => {
+  const total = rows.value.length;
+  const archived = rows.value.filter((r) => !!r.deleted_at).length;
+  const active = total - archived;
+  const okUp = rows.value.filter((r) => r.meets_uptime).length;
+  const okResp = rows.value.filter((r) => r.meets_response).length;
+  const okBoth = rows.value.filter((r) => r.meets_uptime && r.meets_response).length;
+  const avgUp = total ? rows.value.reduce((a, r) => a + r.uptime_pct, 0) / total : 0;
+  return [
+    {
+      label: '집계 인터페이스 수',
+      value: total.toString(),
+      hint: archived > 0 ? `활성 ${active} + 보관 ${archived}` : `활성 ${active}`,
+      color: 'text-primary',
+    },
+    {
+      label: '평균 가동률',
+      value: `${avgUp.toFixed(2)}%`,
+      hint: '전 인터페이스 평균',
+      color: avgUp >= 99 ? 'text-success' : 'text-warning',
+    },
+    {
+      label: '가동률 목표 달성',
+      value: `${okUp}/${total}`,
+      hint: `${total ? Math.round((okUp / total) * 100) : 0}% 충족`,
+      color: okUp === total ? 'text-success' : 'text-warning',
+    },
+    {
+      label: '응답시간 목표 달성',
+      value: `${okResp}/${total}`,
+      hint: okBoth === total ? '모두 정상' : `${total - okBoth}건 미달`,
+      color: okResp === total ? 'text-success' : 'text-warning',
+    },
+  ];
+});
+
+function withArchivedSuffix(name: string, deleted: string | null | undefined): string {
+  return deleted ? `${name} (보관)` : name;
+}
+
+// ---- trend series (line/bar per interface)
+const trendSeries = computed(() => {
+  const grouped: Record<string, { name: string; data: { x: string; y: number }[] }> = {};
+  for (const p of trendRows.value) {
+    const key = `${p.interface_id} ${withArchivedSuffix(p.interface_name, p.deleted_at)}`;
+    if (!grouped[key]) grouped[key] = { name: key, data: [] };
+    grouped[key].data.push({ x: p.period, y: Number(p.uptime_pct.toFixed(2)) });
+  }
+  return Object.values(grouped);
+});
+
+const trendBucketCount = computed(
+  () => new Set(trendRows.value.map((p) => p.period)).size,
+);
+
+const trendOpts = computed(() => {
+  const ys = trendRows.value.map((p) => p.uptime_pct).filter((v) => Number.isFinite(v));
+  const yMin = ys.length ? Math.min(85, Math.floor(Math.min(...ys) - 1)) : 90;
+  // Always grouped bar — consistent for monthly/quarterly reporting.
+  // When data grows (>12 buckets × >8 series), aggregation (top-N) is the
+  // answer, not switching chart type.
+  return {
+    chart: {
+      id: 'sla-trend',
+      type: 'bar',
+      toolbar: { show: false },
+      animations: { enabled: false },
+      stacked: false,
+    },
+    stroke: { show: false },
+    markers: { size: 0 },
+    dataLabels: {
+      enabled: trendBucketCount.value <= 6,  // hide labels when too crowded
+      formatter: (v: number) => (v == null ? '' : `${v.toFixed(1)}`),
+      offsetY: -18,
+      style: { fontSize: '10px', colors: ['#444'] },
+      background: { enabled: false },
+    },
+    plotOptions: {
+      bar: {
+        borderRadius: 4,
+        borderRadiusApplication: 'end',
+        columnWidth: '85%',
+        dataLabels: { position: 'top' },
+      },
+    },
+    xaxis: {
+      type: 'category',
+      title: { text: trendBucket.value === 'month' ? '월' : '분기' },
+      labels: { rotate: -30, hideOverlappingLabels: true, trim: true },
+    },
+    yaxis: {
+      title: { text: '가동률 (%)' },
+      min: yMin,
+      max: 100,
+      tickAmount: 5,
+      labels: { formatter: (v: number) => `${v.toFixed(1)}%` },
+    },
+    legend: {
+      position: 'bottom',
+      showForSingleSeries: true,
+      itemMargin: { horizontal: 8, vertical: 4 },
+    },
+    tooltip: {
+      shared: false,
+      intersect: true,
+      followCursor: true,
+      y: { formatter: (v: number) => (v == null ? '-' : `${v.toFixed(2)}%`) },
+    },
+    annotations: {
+      yaxis: [
+        {
+          y: 99,
+          borderColor: '#E04F5F',
+          strokeDashArray: 4,
+          label: {
+            text: '일반 목표 99%',
+            position: 'right',
+            style: { color: '#fff', background: '#E04F5F' },
+          },
+        },
+      ],
+    },
+  };
+});
+
+// ---- calendar heatmap series (1 row per interface, columns=days)
+const calSeries = computed(() => {
+  const grouped: Record<string, { name: string; data: { x: string; y: number }[] }> = {};
+  for (const c of calRows.value) {
+    const key = `#${c.interface_id} ${withArchivedSuffix(c.interface_name, c.deleted_at)}`;
+    if (!grouped[key]) grouped[key] = { name: key, data: [] };
+    let score = 0;
+    if (c.uptime_pct >= c.target_uptime && c.avg_response_ms <= c.target_response_ms) score = 100;
+    else if (c.uptime_pct >= c.target_uptime || c.avg_response_ms <= c.target_response_ms) score = 50;
+    grouped[key].data.push({ x: c.date.slice(5), y: score });
+  }
+  return Object.values(grouped);
+});
+
+const calOpts = computed(() => {
+  const colCount = calSeries.value[0]?.data.length ?? 0;
+  // Rotate labels and thin them out as columns grow
+  const rotate = colCount > 30 ? -45 : -15;
+  const showEvery = colCount > 60 ? 7 : colCount > 30 ? 3 : 1;
+  return {
+    chart: { id: 'sla-cal', toolbar: { show: false }, animations: { enabled: false } },
+    dataLabels: { enabled: false },
+    stroke: { width: 1, colors: ['#fff'] },
+    xaxis: {
+      type: 'category',
+      title: { text: '날짜 (MM-DD)' },
+      labels: {
+        rotate,
+        rotateAlways: colCount > 30,
+        hideOverlappingLabels: true,
+        trim: true,
+        formatter: (val: string, _ts: any, opts: any) => {
+          // Only show every N-th label to avoid overlap on long ranges
+          const idx = opts?.i ?? 0;
+          return idx % showEvery === 0 ? val : '';
+        },
+      },
+    },
+    yaxis: {
+      labels: {
+        maxWidth: 200,
+        style: { fontSize: '11px' },
+      },
+    },
+    plotOptions: {
+      heatmap: {
+        shadeIntensity: 0,
+        radius: 2,
+        useFillColorAsStroke: false,
+        colorScale: {
+          ranges: [
+            { from: -1, to: 0, color: '#eef2f7', name: '데이터 없음' },
+            { from: 1, to: 49, color: '#fbb4b8', name: '미달' },
+            { from: 50, to: 99, color: '#ffd58a', name: '부분 달성' },
+            { from: 100, to: 100, color: '#7ecf86', name: '목표 달성' },
+          ],
+        },
+      },
+    },
+    legend: { position: 'top' },
+    tooltip: {
+      custom: ({ seriesIndex, dataPointIndex, w }: any) => {
+        const series = w.config.series[seriesIndex];
+        const point = series.data[dataPointIndex];
+        const score = point.y;
+        const label = score === 100 ? '목표 달성' : score >= 50 ? '부분 달성' : score > 0 ? '미달' : '데이터 없음';
+        return `<div style="padding:6px 10px"><strong>${series.name}</strong><br>${point.x} → ${label}</div>`;
+      },
+    },
+  };
+});
 
 async function load() {
   loading.value = true;
   try {
-    rows.value = (await Sla.report(days.value)).data;
+    const [r, t, c] = await Promise.all([
+      Sla.report(days.value),
+      Sla.trend(trendBucket.value, trendMonths.value),
+      Sla.calendar(calendarDays.value),
+    ]);
+    rows.value = r.data;
+    trendRows.value = t.data;
+    calRows.value = c.data;
   } finally {
     loading.value = false;
   }
 }
 
+function printReport() {
+  printedAt.value = new Date().toLocaleString('ko-KR');
+  setTimeout(() => window.print(), 100);
+}
+
 onMounted(load);
 </script>
+
+<style scoped>
+.print-only {
+  display: none;
+}
+@media print {
+  .no-print {
+    display: none !important;
+  }
+  .print-only {
+    display: block !important;
+  }
+  /* Make charts/tables fit nicely on A4 */
+  :deep(.v-card) {
+    box-shadow: none !important;
+    border: 1px solid #ddd !important;
+    page-break-inside: avoid;
+  }
+}
+</style>

@@ -87,3 +87,4 @@ class HeatmapRow(BaseModel):
     protocol: str
     organization: str | None = None
     cells: list[HeatmapCell]
+    deleted_at: datetime | None = None

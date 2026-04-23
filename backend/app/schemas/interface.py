@@ -66,4 +66,5 @@ class InterfaceOut(InterfaceBase):
     id: int
     created_at: datetime
     updated_at: datetime
+    deleted_at: datetime | None = None
     has_secret: bool = False

@@ -23,6 +23,7 @@ export interface InterfaceItem {
   failure_rate_threshold?: number | null;
   created_at: string;
   updated_at: string;
+  deleted_at?: string | null;
 }
 
 export interface CallLogItem {
@@ -81,6 +82,7 @@ export interface SlaReportRow {
   target_response_ms: number;
   meets_uptime: boolean;
   meets_response: boolean;
+  deleted_at?: string | null;
 }
 
 export const Interfaces = {
@@ -90,7 +92,13 @@ export const Interfaces = {
   update: (id: number, payload: Partial<InterfaceItem> & { auth_secret?: string }) =>
     api.patch<InterfaceItem>(`/interfaces/${id}`, payload),
   remove: (id: number) => api.delete(`/interfaces/${id}`),
+  restore: (id: number) => api.post<InterfaceItem>(`/interfaces/${id}/restore`),
   execute: (id: number) => api.post<CallLogItem>(`/interfaces/${id}/execute`),
+  cronPreview: (expression: string, count = 3) =>
+    api.get<{ valid: boolean; error?: string; next_runs?: string[] }>(
+      '/interfaces/cron-preview',
+      { params: { expression, count } },
+    ),
 };
 
 export interface HeatmapCell {
@@ -105,6 +113,7 @@ export interface HeatmapRow {
   protocol: string;
   organization: string | null;
   cells: HeatmapCell[];
+  deleted_at?: string | null;
 }
 
 export const CallLogs = {
@@ -125,12 +134,46 @@ export const Incidents = {
     api.post<IncidentItem>(`/incidents/${id}/resolve`, null, { params: { resolution } }),
   relatedLogs: (id: number, limit = 200) =>
     api.get<CallLogItem[]>(`/incidents/${id}/related-logs`, { params: { limit } }),
+  retryRelated: (id: number, mode: 'latest' | 'all' = 'latest') =>
+    api.post<BulkRetryResponse>(`/incidents/${id}/retry-related`, { mode }),
 };
+
+export interface SlaTrendPoint {
+  period: string;
+  interface_id: number;
+  interface_name: string;
+  uptime_pct: number;
+  avg_response_ms: number;
+  target_uptime: number;
+  target_response_ms: number;
+  meets_uptime: boolean;
+  meets_response: boolean;
+  total_calls: number;
+  deleted_at?: string | null;
+}
+
+export interface SlaCalendarCell {
+  date: string;
+  interface_id: number;
+  interface_name: string;
+  uptime_pct: number;
+  avg_response_ms: number;
+  target_uptime: number;
+  target_response_ms: number;
+  meets: boolean;
+  total_calls: number;
+  deleted_at?: string | null;
+}
 
 export const Sla = {
   report: (days = 30) => api.get<SlaReportRow[]>('/sla/report', { params: { days } }),
   upsertTarget: (payload: { interface_id: number; uptime_target: number; response_ms_target: number }) =>
     api.post('/sla/targets', payload),
+  trend: (bucket: 'month' | 'quarter' = 'month', months = 6) =>
+    api.get<SlaTrendPoint[]>('/sla/trend', { params: { bucket, months } }),
+  calendar: (days = 30) =>
+    api.get<SlaCalendarCell[]>('/sla/calendar', { params: { days } }),
+  exportXlsxUrl: (days = 30) => `/api/sla/export.xlsx?days=${days}`,
 };
 
 export const AI = {
@@ -151,6 +194,7 @@ export interface PercentileRow {
   max_ms: number;
   avg_ms: number;
   throughput_per_min: number;
+  deleted_at?: string | null;
 }
 export interface SlowCallRow {
   id: number;

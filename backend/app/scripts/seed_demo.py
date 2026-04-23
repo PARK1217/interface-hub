@@ -29,7 +29,7 @@ from app.models.interface import AuthType, ProtocolType
 
 random.seed(42)
 NOW = now_kst()
-WINDOW_DAYS = 7
+WINDOW_DAYS = 60  # 2 months — enough for trend + 30-day calendar
 
 
 # Each entry: realistic Korean external counterpart with traffic/error profile.

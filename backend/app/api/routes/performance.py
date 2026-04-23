@@ -30,6 +30,7 @@ class PercentileRow(BaseModel):
     max_ms: int
     avg_ms: float
     throughput_per_min: float
+    deleted_at: datetime | None = None
 
 
 class SlowCallRow(BaseModel):
@@ -65,6 +66,7 @@ def percentiles(
             i.name          AS interface_name,
             i.protocol      AS protocol,
             i.organization  AS organization,
+            i.deleted_at    AS deleted_at,
             COUNT(*)        AS total_calls,
             SUM(CASE WHEN c.status <> 'SUCCESS' THEN 1 ELSE 0 END) AS failure_count,
             percentile_cont(0.5)  WITHIN GROUP (ORDER BY c.duration_ms) AS p50_ms,
@@ -75,7 +77,7 @@ def percentiles(
         FROM call_logs c
         JOIN interfaces i ON i.id = c.interface_id
         WHERE c.called_at >= :since
-        GROUP BY i.id, i.name, i.protocol, i.organization
+        GROUP BY i.id, i.name, i.protocol, i.organization, i.deleted_at
         ORDER BY p95_ms DESC NULLS LAST
         """
     )
@@ -90,6 +92,7 @@ def percentiles(
                 interface_name=r["interface_name"],
                 protocol=r["protocol"],
                 organization=r["organization"],
+                deleted_at=r["deleted_at"],
                 total_calls=total,
                 failure_count=int(r["failure_count"] or 0),
                 p50_ms=float(r["p50_ms"] or 0),

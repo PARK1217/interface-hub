@@ -191,6 +191,7 @@ def heatmap(
                 protocol=itf.protocol.value,
                 organization=itf.organization,
                 cells=cells,
+                deleted_at=itf.deleted_at,
             )
         )
     return out

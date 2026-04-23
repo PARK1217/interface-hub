@@ -37,3 +37,4 @@ class SlaReportRow(BaseModel):
     target_response_ms: int
     meets_uptime: bool
     meets_response: bool
+    deleted_at: datetime | None = None

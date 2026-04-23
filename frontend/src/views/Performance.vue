@@ -78,6 +78,19 @@
         <template #item.protocol="{ item }">
           <v-chip size="x-small" :color="protocolColor(item.protocol)">{{ item.protocol }}</v-chip>
         </template>
+        <template #item.interface_name="{ item }">
+          <span>{{ item.interface_name }}</span>
+          <v-chip
+            v-if="item.deleted_at"
+            size="x-small"
+            color="grey"
+            variant="tonal"
+            prepend-icon="mdi-archive-outline"
+            class="ml-2"
+          >
+            보관
+          </v-chip>
+        </template>
         <template #item.p50_ms="{ item }">{{ formatMs(item.p50_ms) }}</template>
         <template #item.p95_ms="{ item }">
           <span :class="latencyClass(item.p95_ms)">{{ formatMs(item.p95_ms) }}</span>

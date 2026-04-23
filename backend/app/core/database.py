@@ -55,6 +55,9 @@ _DEMO_MIGRATIONS: list[str] = [
     "CREATE INDEX IF NOT EXISTS ix_call_logs_error_type ON call_logs(error_type)",
     # Add new protocol enum value if missing (Postgres ENUM is finicky)
     "ALTER TYPE protocoltype ADD VALUE IF NOT EXISTS 'BATCH'",
+    # Interface soft delete
+    "ALTER TABLE interfaces ADD COLUMN IF NOT EXISTS deleted_at TIMESTAMPTZ",
+    "CREATE INDEX IF NOT EXISTS ix_interfaces_deleted_at ON interfaces(deleted_at)",
 ]
 
 

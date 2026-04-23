@@ -112,9 +112,12 @@ def evaluate_after_call(db: Session, itf: Interface, call: CallLog) -> None:
 
     # 4) auto-resolve "slow response" / "high failure" if a healthy SUCCESS came in
     if call.status == CallStatus.SUCCESS and call.duration_ms <= _resp_threshold(itf):
+        from app.services.incident_helpers import mark_related_handled
+
         for type_ in (IncidentType.SLOW_RESPONSE, IncidentType.HIGH_FAILURE_RATE):
             opened = _open_incident(db, itf.id, type_)
             if opened:
                 opened.resolved_at = now_kst()
                 opened.resolution = "auto-resolved by healthy call"
+                mark_related_handled(db, opened, itf)
                 db.commit()
