@@ -478,6 +478,58 @@
             </v-col>
           </v-row>
 
+          <div class="text-overline text-medium-emphasis mb-2 mt-4">호출 안정성 (Phase B.9)</div>
+          <v-card variant="outlined" rounded="lg" class="pa-3 mb-3">
+            <div class="text-caption text-medium-emphasis mb-3">
+              외부 기관 일시 장애 (5xx / timeout / 네트워크 끊김) 시 자동 재시도. 401·422 같이
+              재시도해도 같은 결과인 실패는 즉시 종료. SFTP·MQ·BATCH 는 멱등성 문제로 미적용.
+            </div>
+            <v-row dense>
+              <v-col cols="12" md="4">
+                <v-text-field
+                  v-model.number="form.timeout_seconds"
+                  label="호출 timeout (초)"
+                  type="number"
+                  step="0.5"
+                  min="0.5"
+                  max="300"
+                  density="comfortable"
+                  variant="outlined"
+                  placeholder="기본 10초"
+                  hint="비우면 시스템 기본값(10s)"
+                  persistent-hint
+                />
+              </v-col>
+              <v-col cols="12" md="4">
+                <v-text-field
+                  v-model.number="form.retry_max"
+                  label="최대 재시도 횟수"
+                  type="number"
+                  min="0"
+                  max="5"
+                  density="comfortable"
+                  variant="outlined"
+                  hint="0=재시도 안 함. 권장 2~3"
+                  persistent-hint
+                />
+              </v-col>
+              <v-col cols="12" md="4">
+                <v-text-field
+                  v-model.number="form.retry_backoff_seconds"
+                  label="재시도 backoff (초)"
+                  type="number"
+                  step="0.5"
+                  min="0"
+                  max="30"
+                  density="comfortable"
+                  variant="outlined"
+                  hint="지수 증가: 1→2→4→8 초"
+                  persistent-hint
+                />
+              </v-col>
+            </v-row>
+          </v-card>
+
           <div class="text-overline text-medium-emphasis mb-2 mt-4">알림 채널 (Phase B.7)</div>
           <v-card variant="outlined" rounded="lg" class="pa-3 mb-2">
             <div class="text-caption text-medium-emphasis mb-2">
@@ -919,6 +971,9 @@ function openCreate() {
     secret_change_reason: '',
     response_ms_threshold: null,
     failure_rate_threshold: null,
+    timeout_seconds: null,
+    retry_max: 0,
+    retry_backoff_seconds: 1.0,
     enabled: true,
   });
   parseCron('');

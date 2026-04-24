@@ -26,6 +26,10 @@ class InterfaceBase(BaseModel):
     # Phase B.7 알림 룰
     muted_until: datetime | None = None
     alert_channels: list[str] | None = None
+    # Phase B.9 호출 안정성
+    timeout_seconds: float | None = Field(default=None, ge=0.5, le=300.0)
+    retry_max: int = Field(default=0, ge=0, le=5)
+    retry_backoff_seconds: float = Field(default=1.0, ge=0.0, le=30.0)
 
     @field_validator("schedule_cron")
     @classmethod
@@ -58,6 +62,10 @@ class InterfaceUpdate(BaseModel):
     response_ms_threshold: int | None = None
     failure_rate_threshold: float | None = None
     alert_channels: list[str] | None = None  # Phase B.7
+    # Phase B.9 호출 안정성
+    timeout_seconds: float | None = Field(default=None, ge=0.5, le=300.0)
+    retry_max: int | None = Field(default=None, ge=0, le=5)
+    retry_backoff_seconds: float | None = Field(default=None, ge=0.0, le=30.0)
 
     @field_validator("schedule_cron")
     @classmethod

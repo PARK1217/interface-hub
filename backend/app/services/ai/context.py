@@ -18,12 +18,17 @@ from app.models.call_log import CallStatus
 
 
 def build_stats_context(db: Session, *, days: int = 7, top_n: int = 10) -> str:
-    """최근 N일 인터페이스별 호출/실패/실패율 + 미해결 incident + 음소거 현황.
+    """최근 N일 인터페이스별 호출/실패/실패율 + 시간대 분포 + 추이 + 미해결 incident.
 
-    LLM 에 "이 데이터만 보고 답해" 라는 컨텍스트로 사용. 사용자가 운영 통계
-    질문 ("지금 가장 잦은 인터페이스") 했을 때 정확한 답이 가능하도록.
+    Phase B.11 — 기존 7일 합계만 보던 것을 **추이(어제/오늘 비교)** + **시간대별
+    분포(가장 실패 잦은 시간대)** 까지 확장. LLM 이 "오후 3시쯤 KIDI 가 자주 막힘"
+    같은 패턴 답변 가능.
+
+    LLM 에 "이 데이터만 보고 답해" 라는 컨텍스트로 사용. 표 외 일반론 추가 금지
+    (system prompt 에 명시).
     """
-    since = now_kst() - timedelta(days=days)
+    now = now_kst()
+    since = now - timedelta(days=days)
 
     # 인터페이스별 호출/실패 집계
     failure_expr = case((CallLog.status != CallStatus.SUCCESS, 1), else_=0)
@@ -37,6 +42,7 @@ def build_stats_context(db: Session, *, days: int = 7, top_n: int = 10) -> str:
             Interface.muted_until,
             func.count(CallLog.id).label("total"),
             func.coalesce(func.sum(failure_expr), 0).label("failures"),
+            func.coalesce(func.avg(CallLog.duration_ms), 0).label("avg_ms"),
         )
         .join(CallLog, CallLog.interface_id == Interface.id)
         .where(CallLog.called_at >= since)
@@ -46,26 +52,91 @@ def build_stats_context(db: Session, *, days: int = 7, top_n: int = 10) -> str:
     ).all()
 
     lines: list[str] = [
-        f"## 최근 {days}일 인터페이스 운영 통계 (KST 기준, {now_kst().isoformat()} 시점)",
+        f"## 최근 {days}일 인터페이스 운영 통계 (KST 기준, {now.isoformat()} 시점)",
         "",
         "### 실패 건수 Top 10 인터페이스",
-        "| 순위 | 인터페이스 | 기관 | 프로토콜 | 호출수 | 실패수 | 실패율 | 비고 |",
-        "|---|---|---|---|---:|---:|---:|---|",
+        "| 순위 | 인터페이스 | 기관 | 프로토콜 | 호출수 | 실패수 | 실패율 | 평균응답 | 비고 |",
+        "|---|---|---|---|---:|---:|---:|---:|---|",
     ]
     if not rows:
-        lines.append("| - | (집계 데이터 없음) | - | - | 0 | 0 | 0% | |")
+        lines.append("| - | (집계 데이터 없음) | - | - | 0 | 0 | 0% | - | |")
     for i, r in enumerate(rows, 1):
         rate = (r.failures / r.total * 100) if r.total else 0.0
         notes = []
         if r.deleted_at:
             notes.append("📦 보관됨")
-        if r.muted_until and r.muted_until > now_kst():
+        if r.muted_until and r.muted_until > now:
             notes.append("🔕 음소거중")
         lines.append(
             f"| {i} | {r.name} | {r.organization or '-'} | "
             f"{r.protocol.value if hasattr(r.protocol, 'value') else r.protocol} | "
-            f"{r.total} | {r.failures} | {rate:.1f}% | {' '.join(notes) or '-'} |"
+            f"{r.total} | {r.failures} | {rate:.1f}% | {int(r.avg_ms)}ms | {' '.join(notes) or '-'} |"
         )
+
+    # Phase B.11 — 어제 vs 오늘 호출/실패 비교 (추이)
+    today_start = now.replace(hour=0, minute=0, second=0, microsecond=0)
+    yesterday_start = today_start - timedelta(days=1)
+    trend_rows = db.execute(
+        select(
+            (CallLog.called_at >= today_start).label("is_today"),
+            func.count(CallLog.id).label("total"),
+            func.coalesce(func.sum(failure_expr), 0).label("failures"),
+        )
+        .where(CallLog.called_at >= yesterday_start)
+        .group_by("is_today")
+    ).all()
+    today_total = today_failures = 0
+    yest_total = yest_failures = 0
+    for r in trend_rows:
+        if r.is_today:
+            today_total, today_failures = r.total, r.failures
+        else:
+            yest_total, yest_failures = r.total, r.failures
+    lines += ["", "### 어제 vs 오늘 추이 (전체 인터페이스 합산)"]
+    if today_total or yest_total:
+        yest_rate = (yest_failures / yest_total * 100) if yest_total else 0
+        today_rate = (today_failures / today_total * 100) if today_total else 0
+        delta = today_rate - yest_rate
+        delta_label = (
+            f"🔺 +{delta:.1f}%p (악화)" if delta > 1
+            else f"🟢 {delta:.1f}%p (개선)" if delta < -1
+            else "➖ 변화 미미"
+        )
+        lines += [
+            "| 구간 | 호출수 | 실패수 | 실패율 |",
+            "|---|---:|---:|---:|",
+            f"| 어제 (전일) | {yest_total} | {yest_failures} | {yest_rate:.1f}% |",
+            f"| 오늘 (지금까지) | {today_total} | {today_failures} | {today_rate:.1f}% |",
+            f"| **추세** | | | **{delta_label}** |",
+        ]
+    else:
+        lines.append("- 비교할 데이터 없음")
+
+    # Phase B.11 — 시간대별 실패 분포 (어느 시간이 가장 위험한지)
+    # date_part('hour', ...) 는 PG 함수. SQLite 데모는 미지원이므로 try/except.
+    try:
+        hour_rows = db.execute(
+            select(
+                func.date_part("hour", CallLog.called_at).label("hour"),
+                func.count(CallLog.id).label("total"),
+                func.coalesce(func.sum(failure_expr), 0).label("failures"),
+            )
+            .where(CallLog.called_at >= since)
+            .group_by("hour")
+            .order_by(func.coalesce(func.sum(failure_expr), 0).desc())
+            .limit(5)
+        ).all()
+        if hour_rows:
+            lines += ["", "### 실패 잦은 시간대 Top 5 (KST hour, 최근 7일)"]
+            lines += ["| 시간대 | 호출수 | 실패수 | 실패율 |", "|---|---:|---:|---:|"]
+            for h in hour_rows:
+                hr = int(h.hour)
+                rate = (h.failures / h.total * 100) if h.total else 0
+                lines.append(
+                    f"| {hr:02d}:00~{(hr + 1) % 24:02d}:00 | {h.total} | {h.failures} | {rate:.1f}% |"
+                )
+    except Exception:  # noqa: BLE001
+        pass
 
     # 미해결 incident 인터페이스별 카운트
     open_incidents = db.execute(

@@ -12,6 +12,11 @@ const routes = [
   { path: '/sla', component: () => import('@/views/Sla.vue'), meta: { title: 'SLA' } },
   { path: '/ai', component: () => import('@/views/AiAssistant.vue'), meta: { title: 'AI 분석' } },
   {
+    path: '/alert-rules',
+    component: () => import('@/views/AlertRules.vue'),
+    meta: { title: '알림 룰', adminOnly: true },
+  },
+  {
     path: '/audit-logs',
     component: () => import('@/views/AuditLogs.vue'),
     meta: { title: '감사 로그', auditorOnly: true },

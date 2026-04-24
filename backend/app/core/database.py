@@ -79,6 +79,27 @@ _DEMO_MIGRATIONS: list[str] = [
     # Phase B.8.11 — AI 질의 결과 분류 (popular/history/suggestions 필터 용)
     "ALTER TABLE ai_query_logs ADD COLUMN IF NOT EXISTS outcome VARCHAR(30) NOT NULL DEFAULT 'success'",
     "CREATE INDEX IF NOT EXISTS ix_ai_query_logs_outcome ON ai_query_logs(outcome)",
+    # Phase B.9 호출 안정성 (재시도 + timeout)
+    "ALTER TABLE interfaces ADD COLUMN IF NOT EXISTS timeout_seconds DOUBLE PRECISION",
+    "ALTER TABLE interfaces ADD COLUMN IF NOT EXISTS retry_max INTEGER NOT NULL DEFAULT 0",
+    "ALTER TABLE interfaces ADD COLUMN IF NOT EXISTS retry_backoff_seconds DOUBLE PRECISION NOT NULL DEFAULT 1.0",
+    "ALTER TABLE call_logs ADD COLUMN IF NOT EXISTS attempt_count INTEGER NOT NULL DEFAULT 1",
+    # Phase B.10 전역 알림 룰 (severity 라우팅 + 근무시간 외 silence)
+    """CREATE TABLE IF NOT EXISTS alert_rules (
+        id SERIAL PRIMARY KEY,
+        info_channels JSON NOT NULL DEFAULT '["in_app"]',
+        warning_channels JSON NOT NULL DEFAULT '["in_app","slack"]',
+        critical_channels JSON NOT NULL DEFAULT '["in_app","slack","email"]',
+        quiet_hours_enabled BOOLEAN NOT NULL DEFAULT FALSE,
+        quiet_hours_start INTEGER NOT NULL DEFAULT 22,
+        quiet_hours_end INTEGER NOT NULL DEFAULT 8,
+        quiet_hours_skip_critical BOOLEAN NOT NULL DEFAULT TRUE,
+        weekend_silence BOOLEAN NOT NULL DEFAULT FALSE,
+        updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+        updated_by INTEGER REFERENCES users(id) ON DELETE SET NULL
+    )""",
+    # 단일 행 보장 — id=1 로 upsert. 없으면 기본값으로 생성.
+    """INSERT INTO alert_rules (id) VALUES (1) ON CONFLICT (id) DO NOTHING""",
 ]
 
 

@@ -62,6 +62,21 @@ class Interface(Base):
         JSON, default=lambda: ["in_app", "slack", "email"]
     )
 
+    # --- Phase B.9 호출 안정성 (재시도 + timeout) ---------------------------
+    # timeout_seconds: 호출당 타임아웃. null 이면 시스템 기본(10s).
+    #   외부 기관별로 응답 SLA 가 다름 — KIDI 는 보통 < 2s, 보험개발원은 5s+
+    #   허용 같은 식으로 운영자 조정. httpx.AsyncClient(timeout=...) 에 그대로 전달.
+    # retry_max: 추가 재시도 횟수. 0 이면 재시도 안 함 (총 1회만 호출).
+    #   2 면 최초 호출 + 재시도 2회 = 총 3회. exponential backoff 적용.
+    # retry_backoff_seconds: 첫 재시도까지 대기 시간. 두 번째는 ×2, 세 번째 ×4...
+    #   짧게 (0.5~2s) 두는 게 정석 — 외부 기관 jitter 회피용.
+    # 재시도 대상: TIMEOUT / SERVER_ERROR (5xx) / network 에러만.
+    #   AUTH_ERROR (401/403) 와 FORMAT_ERROR (422) 는 재시도해도 같은 결과 →
+    #   즉시 실패 처리. 무의미한 호출 폭주 방지.
+    timeout_seconds: Mapped[float | None] = mapped_column(default=None)
+    retry_max: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
+    retry_backoff_seconds: Mapped[float] = mapped_column(default=1.0, nullable=False)
+
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
     updated_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now(), onupdate=func.now()

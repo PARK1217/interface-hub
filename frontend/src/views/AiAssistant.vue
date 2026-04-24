@@ -231,14 +231,32 @@
         </v-card>
 
         <v-card v-if="cases.length">
-          <v-card-title>유사 사례 Top-{{ cases.length }}</v-card-title>
+          <v-card-title class="d-flex align-center">
+            유사 사례 Top-{{ cases.length }}
+            <v-chip
+              size="x-small"
+              color="info"
+              variant="tonal"
+              class="ml-2"
+              prepend-icon="mdi-cursor-default-click-outline"
+            >
+              클릭 시 장애 페이지로 드릴다운
+            </v-chip>
+          </v-card-title>
           <v-list>
-            <v-list-item v-for="c in cases" :key="c.incident_id">
+            <v-list-item
+              v-for="c in cases"
+              :key="c.incident_id"
+              link
+              :title="`incident #${c.incident_id} 상세 보기 (장애 페이지로 이동)`"
+              @click="drillIntoIncident(c.incident_id)"
+            >
               <v-list-item-title>
                 #{{ c.incident_id }} · {{ c.type }} ·
                 <v-chip size="x-small" variant="tonal" :color="scoreColor(c.score)">
                   유사도 {{ (c.score * 100).toFixed(1) }}%
                 </v-chip>
+                <v-icon icon="mdi-open-in-new" size="x-small" class="ml-1" />
               </v-list-item-title>
               <v-list-item-subtitle style="white-space: pre-wrap">{{ c.content }}</v-list-item-subtitle>
             </v-list-item>
@@ -336,6 +354,15 @@
 import { computed, onMounted, reactive, ref } from 'vue';
 import { AI, type AiHistoryItem, type AiSuggestion } from '@/api/client';
 import { formatDateTimeShort } from '@/utils/format';
+import { useRouter } from 'vue-router';
+
+const router = useRouter();
+
+function drillIntoIncident(incidentId: number) {
+  // Phase B.11 — case_lookup 결과의 유사 사례를 클릭하면 incidents 페이지에서
+  // 해당 행을 자동 강조. ?focus=ID 쿼리는 Incidents.vue 가 onMounted 에서 읽음.
+  router.push({ path: '/incidents', query: { focus: String(incidentId) } });
+}
 
 interface LLMErrorPayload {
   kind: string;

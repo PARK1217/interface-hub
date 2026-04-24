@@ -55,6 +55,10 @@ export interface InterfaceItem {
   failure_rate_threshold?: number | null;
   muted_until?: string | null;
   alert_channels?: AlertChannel[] | null;
+  // Phase B.9 호출 안정성
+  timeout_seconds?: number | null;
+  retry_max?: number;
+  retry_backoff_seconds?: number;
   created_at: string;
   updated_at: string;
   deleted_at?: string | null;
@@ -76,6 +80,7 @@ export interface CallLogItem {
   parent_log_id?: number | null;
   retry_count?: number;
   is_reprocessed?: boolean;
+  attempt_count?: number;  // Phase B.9 — 자동 재시도 시도 횟수 (1=재시도 없음)
 }
 
 export interface BulkRetryRequest {
@@ -345,6 +350,23 @@ export interface AuditLogItem {
   user_agent: string | null;
   occurred_at: string;
 }
+
+export interface AlertRulePayload {
+  id: number;
+  info_channels: AlertChannel[];
+  warning_channels: AlertChannel[];
+  critical_channels: AlertChannel[];
+  quiet_hours_enabled: boolean;
+  quiet_hours_start: number;
+  quiet_hours_end: number;
+  quiet_hours_skip_critical: boolean;
+  weekend_silence: boolean;
+}
+
+export const AlertRules = {
+  get: () => api.get<AlertRulePayload>('/alert-rules'),
+  update: (payload: Partial<AlertRulePayload>) => api.put<AlertRulePayload>('/alert-rules', payload),
+};
 
 export const AuditLogs = {
   list: (params: Record<string, unknown> = {}) =>

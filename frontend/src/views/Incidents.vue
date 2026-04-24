@@ -22,8 +22,27 @@
       이 장애를 일으킨 호출들을 시간순으로 확인할 수 있어요.
     </v-alert>
 
+    <v-alert
+      v-if="focusedId"
+      type="info"
+      variant="tonal"
+      density="compact"
+      class="mb-3"
+      closable
+      @click:close="clearFocus"
+    >
+      AI 분석에서 드릴다운된 장애 <strong>incident #{{ focusedId }}</strong> 를 강조 표시 중입니다.
+      <span v-if="!focusedRowExists" class="text-error">— 해당 incident 가 목록에 없습니다 (해결되어 필터에 가려졌을 수 있음)</span>
+    </v-alert>
+
     <v-card>
-      <v-data-table :headers="headers" :items="rows" :loading="loading" density="comfortable">
+      <v-data-table
+        :headers="headers"
+        :items="rows"
+        :loading="loading"
+        density="comfortable"
+        :row-props="rowProps"
+      >
         <template #item.state="{ item }">
           <v-chip
             v-if="item.resolved_at"
@@ -160,12 +179,33 @@
 </template>
 
 <script setup lang="ts">
-import { computed, onMounted, reactive, ref } from 'vue';
+import { computed, onMounted, reactive, ref, watch } from 'vue';
 import { Incidents, type CallLogItem, type IncidentItem } from '@/api/client';
 import { formatDateTime } from '@/utils/format';
 import { useAuthStore } from '@/stores/auth';
+import { useRoute, useRouter } from 'vue-router';
 
 const auth = useAuthStore();
+const route = useRoute();
+const router = useRouter();
+
+// Phase B.11 — AI 분석에서 ?focus=ID 로 들어왔을 때 해당 row 강조 + auto-open
+const focusedId = ref<number | null>(null);
+const focusedRowExists = computed(
+  () => focusedId.value != null && rows.value.some((r) => r.id === focusedId.value),
+);
+
+function rowProps({ item }: { item: IncidentItem }) {
+  if (item.id === focusedId.value) {
+    return { class: 'incident-focused-row' };
+  }
+  return {};
+}
+
+function clearFocus() {
+  focusedId.value = null;
+  router.replace({ path: '/incidents' });
+}
 
 const headers = [
   { title: '상태', key: 'state', width: 110 },
@@ -267,5 +307,38 @@ async function retryRelated(mode: 'latest' | 'all') {
   }
 }
 
-onMounted(() => load());
+onMounted(async () => {
+  // ?focus=ID 가 있으면: 강조 ID 설정 → 미해결만 토글 강제 해제 (해결된 사례도 보이게)
+  // → 데이터 로드 → 해당 incident 가 있으면 자동으로 관련 호출 다이얼로그 오픈.
+  const fp = Number(route.query.focus);
+  if (Number.isFinite(fp) && fp > 0) {
+    focusedId.value = fp;
+    unresolvedOnly.value = false;
+  }
+  await load();
+  if (focusedId.value && focusedRowExists.value) {
+    const target = rows.value.find((r) => r.id === focusedId.value);
+    if (target) await openRelated(target);
+  }
+});
+
+// 라우트 쿼리 변화 감지 (다른 페이지에서 다시 드릴다운될 때)
+watch(
+  () => route.query.focus,
+  async (v) => {
+    const n = Number(v);
+    if (Number.isFinite(n) && n > 0 && n !== focusedId.value) {
+      focusedId.value = n;
+      unresolvedOnly.value = false;
+      await load();
+    }
+  },
+);
 </script>
+
+<style scoped>
+:deep(.incident-focused-row) {
+  background-color: rgba(33, 150, 243, 0.12);
+  outline: 2px solid #2196f3;
+}
+</style>

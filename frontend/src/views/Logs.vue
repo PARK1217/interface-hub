@@ -81,6 +81,17 @@
           >
             재처리됨
           </v-chip>
+          <v-chip
+            v-if="(item.attempt_count ?? 1) > 1"
+            size="x-small"
+            color="amber-darken-2"
+            variant="flat"
+            class="ml-1"
+            prepend-icon="mdi-replay"
+            :title="`인터페이스 재시도 정책에 따라 ${item.attempt_count}회 시도 후 종료`"
+          >
+            ×{{ item.attempt_count }}
+          </v-chip>
         </template>
         <template #item.actions="{ item }">
           <v-btn

@@ -212,6 +212,8 @@ const routes = [
   { path: '/ai', title: 'AI 분석', icon: 'mdi-robot-outline' },
   // 감사 로그는 OPERATOR 에게는 메뉴 숨김 (감사관/관리자만)
   { path: '/audit-logs', title: '감사 로그', icon: 'mdi-shield-search', auditorOnly: true },
+  // 알림 룰은 ADMIN 만 (전역 정책)
+  { path: '/alert-rules', title: '알림 룰', icon: 'mdi-bell-cog-outline', adminOnly: true },
   // 사용자 관리는 ADMIN 만
   { path: '/users', title: '사용자 관리', icon: 'mdi-account-group-outline', adminOnly: true },
 ];

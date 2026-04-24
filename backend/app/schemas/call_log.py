@@ -26,6 +26,7 @@ class CallLogOut(BaseModel):
     parent_log_id: int | None = None
     retry_count: int = 0
     is_reprocessed: bool = False
+    attempt_count: int = 1  # Phase B.9 — 자동 재시도 시도 횟수
 
 
 class BulkRetryRequest(BaseModel):

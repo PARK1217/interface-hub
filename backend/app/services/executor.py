@@ -32,6 +32,20 @@ from app.models.interface import AuthType, ProtocolType
 log = logging.getLogger("noahub.executor")
 DEFAULT_TIMEOUT = 10.0  # seconds
 
+# Phase B.9 — 재시도 대상 status. 5xx 와 timeout/network 은 일시적이라 재시도 가치
+# 있지만 401/403/422 는 재시도해도 같은 결과 → 즉시 실패. 운영자가 SOAP/REST
+# 양쪽에 동일 정책 적용되도록 어댑터 외부에서 분류.
+_RETRYABLE_STATUSES = {CallStatus.TIMEOUT, CallStatus.SERVER_ERROR, CallStatus.FAILURE}
+
+
+def _is_retryable(status: CallStatus, exc: Exception | None) -> bool:
+    """재시도해도 결과가 바뀔 가능성이 있는지.
+
+    FAILURE 는 보통 connect/DNS/TLS 실패 (httpx.ConnectError 등) — 재시도 의미 있음.
+    AUTH_ERROR / FORMAT_ERROR 는 키/페이로드 자체 문제라 재시도 X.
+    """
+    return status in _RETRYABLE_STATUSES
+
 
 def _classify(http_status: int | None, exc: Exception | None) -> CallStatus:
     if exc is not None:
@@ -73,8 +87,9 @@ async def _exec_rest(itf: Interface) -> tuple[int | None, dict | None, Exception
     headers = _build_auth_headers(itf)
     method = (itf.method or "GET").upper()
     body = itf.request_template or None
+    timeout = float(itf.timeout_seconds or DEFAULT_TIMEOUT)
     try:
-        async with httpx.AsyncClient(timeout=DEFAULT_TIMEOUT) as client:
+        async with httpx.AsyncClient(timeout=timeout) as client:
             req_kwargs: dict[str, Any] = {"headers": headers}
             if body is not None and method in ("POST", "PUT", "PATCH"):
                 req_kwargs["json"] = body
@@ -98,12 +113,55 @@ async def _exec_soap(itf: Interface) -> tuple[int | None, dict | None, Exception
     headers = _build_auth_headers(itf)
     headers.setdefault("Content-Type", "text/xml; charset=utf-8")
     body = (itf.request_template or {}).get("xml", "")
+    timeout = float(itf.timeout_seconds or DEFAULT_TIMEOUT)
     try:
-        async with httpx.AsyncClient(timeout=DEFAULT_TIMEOUT) as client:
+        async with httpx.AsyncClient(timeout=timeout) as client:
             resp = await client.post(itf.endpoint, headers=headers, content=body.encode("utf-8"))
             return resp.status_code, {"text": resp.text[:2000]}, None
     except Exception as e:  # noqa: BLE001
         return None, None, e
+
+
+async def _exec_with_retry(
+    itf: Interface,
+    runner,  # callable returning (status, response, exc)
+) -> tuple[int | None, dict | None, Exception | None, int]:
+    """재시도 래퍼 — runner 를 attempts 번까지 호출. 마지막 시도 결과 반환.
+
+    반환: (http_status, response, exc, attempt_count)
+    attempt_count 는 실제로 호출한 횟수 (1=재시도 없이 1회).
+    """
+    max_attempts = max(1, (itf.retry_max or 0) + 1)
+    backoff = max(0.0, float(itf.retry_backoff_seconds or 1.0))
+    attempt = 0
+    last_status: int | None = None
+    last_response: dict | None = None
+    last_exc: Exception | None = None
+    while attempt < max_attempts:
+        attempt += 1
+        last_status, last_response, last_exc = await runner(itf)
+        classified = _classify(last_status, last_exc)
+        # 마지막 시도면 재시도 평가 안 함 — 그대로 반환
+        if attempt >= max_attempts:
+            break
+        # 성공이면 종료
+        if classified == CallStatus.SUCCESS:
+            break
+        # 재시도 가치 없는 실패 (AUTH/FORMAT) → 즉시 종료
+        if not _is_retryable(classified, last_exc):
+            log.info(
+                "interface=%s attempt %d/%d → %s (재시도 비대상, 즉시 종료)",
+                itf.name, attempt, max_attempts, classified.value,
+            )
+            break
+        # exponential backoff: 1, 2, 4, 8 초...
+        wait = backoff * (2 ** (attempt - 1))
+        log.info(
+            "interface=%s attempt %d/%d failed (%s) — %.2fs 후 재시도",
+            itf.name, attempt, max_attempts, classified.value, wait,
+        )
+        await asyncio.sleep(wait)
+    return last_status, last_response, last_exc, attempt
 
 
 async def _exec_sftp(itf: Interface) -> tuple[int | None, dict | None, Exception | None]:
@@ -354,11 +412,15 @@ async def execute_interface(
     http_status: int | None = None
     response: dict | None = None
     exc: Exception | None = None
+    attempts = 1
 
+    # 재시도 정책은 REST/SOAP 만 적용 — SFTP/MQ/BATCH 는 멱등성 보장 어렵고
+    # (PUT 두 번이면 파일 두 개, MQ 는 메시지 두 번 소비) Phase 2 외부 호출의
+    # 핵심 목표인 "외부 기관 일시 장애 흡수" 는 HTTP 계열에서 가장 가치 큼.
     if itf.protocol == ProtocolType.REST:
-        http_status, response, exc = await _exec_rest(itf)
+        http_status, response, exc, attempts = await _exec_with_retry(itf, _exec_rest)
     elif itf.protocol == ProtocolType.SOAP:
-        http_status, response, exc = await _exec_soap(itf)
+        http_status, response, exc, attempts = await _exec_with_retry(itf, _exec_soap)
     elif itf.protocol == ProtocolType.BATCH:
         http_status, response, exc = await _exec_batch(itf)
     elif itf.protocol == ProtocolType.FTP:
@@ -378,6 +440,12 @@ async def execute_interface(
         # truncate trace to keep logs row reasonably small (~4KB)
         err_trace = "".join(traceback.format_exception(type(exc), exc, exc.__traceback__))[-4000:]
 
+    # 재시도 N회 후에도 실패한 경우 error_message 에 시도 횟수 명시 — 운영자가
+    # 호출 로그만 보고도 "한 번에 실패" vs "3번 시도하고 실패" 구분 가능.
+    err_msg = str(exc) if exc else None
+    if exc is not None and attempts > 1:
+        err_msg = f"[{attempts}회 시도 후 실패] {err_msg}"
+
     log_row = CallLog(
         interface_id=itf.id,
         request={
@@ -389,12 +457,13 @@ async def execute_interface(
         status=status,
         http_status=http_status,
         duration_ms=duration_ms,
-        error_message=str(exc) if exc else None,
+        error_message=err_msg,
         error_type=err_type,
         error_trace=err_trace,
         triggered_by="reprocess" if parent_log is not None else triggered_by,
         parent_log_id=parent_log.id if parent_log is not None else None,
         retry_count=(parent_log.retry_count + 1) if parent_log is not None else 0,
+        attempt_count=attempts,
         actor_user_id=actor.id if actor is not None else None,
     )
     db.add(log_row)

@@ -3,14 +3,17 @@
 from __future__ import annotations
 
 import logging
+from dataclasses import dataclass
 from email.message import EmailMessage
 
 import httpx
+from sqlalchemy import select
 
 from app.core.config import get_settings
+from app.core.database import SessionLocal
 from app.core.time import now_kst
 from app.core.websocket import ws_manager
-from app.models import Incident, Interface
+from app.models import AlertRule, Incident, Interface
 
 log = logging.getLogger("noahub.notifier")
 
@@ -19,6 +22,79 @@ CH_IN_APP = "in_app"   # 프론트 toast 팝업
 CH_SLACK = "slack"     # Slack webhook
 CH_EMAIL = "email"     # SMTP 이메일
 ALL_CHANNELS = (CH_IN_APP, CH_SLACK, CH_EMAIL)
+
+
+@dataclass
+class GlobalRuleDecision:
+    """전역 알림 룰 평가 결과 (Phase B.10).
+
+    - allowed_channels: severity 별 화이트리스트 (인터페이스 화이트리스트와 교집합)
+    - quiet_now: 현재 quiet hours / 주말 silence 인지
+    - silenced_reason: 사용자에게 노출할 silence 사유 (None=정상 발송)
+    """
+    allowed_channels: set[str]
+    quiet_now: bool
+    silenced_reason: str | None
+
+
+def _load_global_rule() -> AlertRule | None:
+    """단일 행 룰 조회. 미설정/오류 시 None — 호출자가 기본 동작(전부 발송)."""
+    try:
+        with SessionLocal() as db:
+            return db.scalar(select(AlertRule).where(AlertRule.id == 1))
+    except Exception:  # noqa: BLE001
+        log.exception("alert_rules 조회 실패 — 기본 동작 (전부 발송) 으로 계속")
+        return None
+
+
+def _within_quiet_hours(start: int, end: int, now_hour: int) -> bool:
+    """now_hour 가 [start, end) 범위 안인지. start>end 면 자정 넘김."""
+    if start == end:
+        return False
+    if start < end:
+        return start <= now_hour < end
+    return now_hour >= start or now_hour < end
+
+
+def evaluate_global_rule(severity: str) -> GlobalRuleDecision:
+    """전역 룰 평가 — severity (info/warning/critical) 와 현재 시각 기준.
+
+    인터페이스의 alert_channels (Phase B.7) 와는 별개. 두 개 모두 통과해야 발송.
+    인터페이스의 muted_until 도 별도 — dispatch_alert 에서 따로 검사.
+    """
+    rule = _load_global_rule()
+    if rule is None:
+        return GlobalRuleDecision(set(ALL_CHANNELS), False, None)
+
+    severity = (severity or "warning").lower()
+    if severity == "info":
+        allowed = set(rule.info_channels or [])
+    elif severity == "critical":
+        allowed = set(rule.critical_channels or [])
+    else:
+        allowed = set(rule.warning_channels or [])
+
+    now = now_kst()
+    quiet = False
+    reason: str | None = None
+    if rule.weekend_silence and now.weekday() >= 5:  # 5=토 6=일
+        quiet = True
+        reason = "주말 silence (전역 룰)"
+    elif rule.quiet_hours_enabled and _within_quiet_hours(
+        rule.quiet_hours_start, rule.quiet_hours_end, now.hour
+    ):
+        quiet = True
+        reason = (
+            f"근무시간 외 silence ({rule.quiet_hours_start:02d}:00~"
+            f"{rule.quiet_hours_end:02d}:00, 전역 룰)"
+        )
+
+    # critical 은 quiet hours 무시 옵션 (기본 ON)
+    if quiet and severity == "critical" and rule.quiet_hours_skip_critical:
+        quiet = False
+        reason = None
+
+    return GlobalRuleDecision(allowed, quiet, reason)
 
 
 def _format_message(itf: Interface, incident: Incident) -> str:
@@ -82,37 +158,61 @@ def _enabled_channels(itf: Interface) -> set[str]:
 
 
 async def dispatch_alert(itf: Interface, incident: Incident) -> None:
-    """Incident 발생 시 알림 발송 — Phase B.7 룰 적용.
+    """Incident 발생 시 알림 발송 — Phase B.7 인터페이스 룰 + Phase B.10 전역 룰.
 
-    채널별 발송 여부:
-    - WS 'incident' broadcast: **항상** 발송. 대시보드 카운트/뱃지/라이브 피드는
-      음소거와 무관하게 갱신되어야 함 ("기록은 남고 알람만 끔" 의 핵심).
-    - in_app toast / slack / email: muted_until 이 미래면 모두 skip.
-      또는 alert_channels 에 빠져있으면 해당 채널 skip.
+    채널별 발송 여부 (모두 통과해야 발송):
+    1. 인터페이스 muted_until 미래 → 전부 skip
+    2. 인터페이스 alert_channels 화이트리스트
+    3. 전역 룰의 severity 별 채널 화이트리스트
+    4. 전역 룰의 quiet hours / 주말 silence (critical 은 skip 옵션)
 
-    payload.should_alert: 프론트가 toast 띄울지 결정 — 음소거 중이거나
-    in_app 채널이 비활성이면 false. 카운트 갱신은 항상.
+    WS broadcast 는 **항상** 발송 — 대시보드 카운트/뱃지/라이브 피드는 silence
+    와 무관하게 갱신되어야 함 ("기록은 남고 알람만 끔").
+
+    payload.should_alert: 프론트가 toast 띄울지 결정 — silence 중이거나
+    in_app 채널이 어디서든 차단되면 false.
     """
     text = _format_message(itf, incident)
     log.warning(text)
 
     muted = _is_muted(itf)
-    chans = _enabled_channels(itf)
-    should_alert_in_app = (CH_IN_APP in chans) and not muted
-    should_send_slack = (CH_SLACK in chans) and not muted
-    should_send_email = (CH_EMAIL in chans) and not muted
+    itf_chans = _enabled_channels(itf)
+    decision = evaluate_global_rule(incident.severity)
+
+    # 두 화이트리스트 교집합 + 인터페이스 음소거 + 전역 quiet
+    silenced = muted or decision.quiet_now
+    effective = itf_chans & decision.allowed_channels
+
+    should_alert_in_app = (CH_IN_APP in effective) and not silenced
+    should_send_slack = (CH_SLACK in effective) and not silenced
+    should_send_email = (CH_EMAIL in effective) and not silenced
 
     if should_send_slack:
         await _post_slack(text)
     else:
-        log.info("slack skipped — muted=%s channels=%s", muted, chans)
+        log.info(
+            "slack skipped — muted=%s quiet=%s itf=%s global=%s",
+            muted, decision.quiet_now, itf_chans, decision.allowed_channels,
+        )
 
     if should_send_email:
         await _send_email(f"[NOA Hub] {itf.name} — {incident.type.value}", text)
     else:
-        log.info("email skipped — muted=%s channels=%s", muted, chans)
+        log.info(
+            "email skipped — muted=%s quiet=%s itf=%s global=%s",
+            muted, decision.quiet_now, itf_chans, decision.allowed_channels,
+        )
 
-    # WS broadcast 는 항상 — 다만 should_alert 플래그로 toast 노출 여부 전달
+    silence_reason: str | None = None
+    if muted:
+        silence_reason = (
+            f"인터페이스 음소거 ({itf.muted_until.isoformat()} 까지)"
+            if itf.muted_until else "인터페이스 음소거"
+        )
+    elif decision.silenced_reason:
+        silence_reason = decision.silenced_reason
+
+    # WS broadcast 는 항상 — 프론트 카운트/뱃지/라이브 피드 갱신
     await ws_manager.broadcast(
         "incident",
         {
@@ -127,5 +227,9 @@ async def dispatch_alert(itf: Interface, incident: Incident) -> None:
             "should_alert": should_alert_in_app,
             "muted": muted,
             "muted_until": itf.muted_until.isoformat() if itf.muted_until else None,
+            # Phase B.10 — 전역 룰 적용 결과 (UI 안내용)
+            "silenced": silenced,
+            "silenced_reason": silence_reason,
+            "effective_channels": sorted(effective),
         },
     )
