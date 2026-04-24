@@ -16,6 +16,18 @@
   overflow-x: auto;
 }
 
+/* v-card-subtitle 기본은 한 줄 ellipsis — 안내 문구는 잘리지 않게 wrap 허용.
+   부제 (subtitle) 는 일반적으로 여러 단어의 설명 문구라 nowrap 동작이 부적절.
+   각 페이지마다 :deep 으로 풀던 것을 글로벌로 통일. */
+.v-card-subtitle {
+  white-space: normal !important;
+  overflow: visible !important;
+  text-overflow: clip !important;
+  -webkit-line-clamp: unset !important;
+  line-height: 1.4 !important;
+  padding-bottom: 8px !important;
+}
+
 /* 대시보드 KPI 숫자 — 좁은 화면에서도 한 줄 유지 + 단위(ms/% 등) 가 잘리지 않도록
    ellipsis 대신 폰트 크기를 viewport 너비에 따라 자동 축소.
    - text-h4 기본 약 2.125rem 을 max 로

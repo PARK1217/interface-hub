@@ -58,30 +58,7 @@
       </v-col>
     </v-row>
 
-    <!-- Section 2: monthly/quarterly trend -->
-    <v-card class="mb-4">
-      <v-card-title class="d-flex align-center flex-wrap">
-        <span class="text-subtitle-1">
-          {{ trendBucket === 'quarter' ? '분기별' : '월별' }} 가동률 추이
-        </span>
-        <v-chip class="ml-3" size="x-small" variant="tonal" color="grey">
-          {{ trendBucket === 'quarter' ? '180일 초과 자동 분기 단위' : '180일 이하 자동 월 단위' }}
-        </v-chip>
-      </v-card-title>
-      <v-card-text>
-        <apexchart
-          v-if="trendSeries.length"
-          ref="trendChartRef"
-          type="bar"
-          height="360"
-          :options="trendOpts"
-          :series="trendSeries"
-        />
-        <div v-else class="text-medium-emphasis">집계할 데이터가 없습니다 (기간을 늘려보세요).</div>
-      </v-card-text>
-    </v-card>
-
-    <!-- Section 3: calendar heatmap -->
+    <!-- Section 2: calendar heatmap -->
     <v-card class="mb-4">
       <v-card-title class="text-subtitle-1 d-flex align-center flex-wrap">
         <span>일별 SLA 충족 캘린더</span>
@@ -96,10 +73,31 @@
           시각 가독성 한계로 최근 90일만 표시 — 전체 기간 데이터는 Excel 참조
         </v-chip>
       </v-card-title>
-      <v-card-subtitle class="text-caption">
-        🟢 가동률·응답 모두 목표 달성 · 🟡 한쪽만 달성 · 🟥 미달 · ⚪ 데이터 없음
-      </v-card-subtitle>
       <v-card-text>
+        <!-- 커스텀 범례 — 호버 강조, 클릭 시 해당 구간만 컬러로 표시 (필터). 다시 클릭하면 해제. -->
+        <div class="cal-legend mb-3" v-if="calSeries.length">
+          <span
+            v-for="(r, idx) in calRanges"
+            :key="r.name"
+            class="legend-chip"
+            :class="{ active: activeCalIdx === idx, dimmed: activeCalIdx !== null && activeCalIdx !== idx }"
+            :title="activeCalIdx === idx ? '클릭해 필터 해제' : `${r.name} 만 강조`"
+            @click="toggleCalRange(idx)"
+          >
+            <span class="legend-swatch" :style="{ background: r.color }" />
+            {{ r.name }}
+          </span>
+          <v-btn
+            v-if="activeCalIdx !== null"
+            size="x-small"
+            variant="text"
+            prepend-icon="mdi-close"
+            class="ml-2"
+            @click="activeCalIdx = null"
+          >
+            필터 해제
+          </v-btn>
+        </div>
         <apexchart
           v-if="calSeries.length"
           ref="calChartRef"
@@ -112,8 +110,8 @@
       </v-card-text>
     </v-card>
 
-    <!-- Section 4: summary table -->
-    <v-card>
+    <!-- Section 3: summary table -->
+    <v-card class="mb-4">
       <v-card-title class="text-subtitle-1">인터페이스별 누적 ({{ days }}일)</v-card-title>
       <v-data-table :headers="headers" :items="rows" :loading="loading" density="comfortable">
         <template #item.interface_name="{ item }">
@@ -140,6 +138,33 @@
           </v-chip>
         </template>
       </v-data-table>
+    </v-card>
+
+    <!-- Section 4: 장기 추이 (위 KPI/캘린더/표는 선택 기간만, 이 차트는 더 긴 시점 흐름) -->
+    <v-card>
+      <v-card-title class="d-flex align-center flex-wrap">
+        <span class="text-subtitle-1">
+          {{ trendBucket === 'quarter' ? '분기별' : '월별' }} 가동률 추이
+        </span>
+        <v-chip class="ml-3" size="x-small" variant="tonal" color="grey">
+          최근 {{ trendMonths }}{{ trendBucket === 'quarter' ? '분기' : '개월' }}
+        </v-chip>
+      </v-card-title>
+      <v-card-subtitle>
+        위 표·캘린더는 선택 기간({{ days }}일) 내 데이터지만, 이 차트는 <strong>더 긴 시점의 흐름</strong>을
+        보여줍니다. 단기 변화는 캘린더에서, 장기 패턴은 이 추이로 — 두 시각이 보완됩니다.
+      </v-card-subtitle>
+      <v-card-text>
+        <apexchart
+          v-if="trendSeries.length"
+          ref="trendChartRef"
+          type="bar"
+          height="360"
+          :options="trendOpts"
+          :series="trendSeries"
+        />
+        <div v-else class="text-medium-emphasis">집계할 데이터가 없습니다.</div>
+      </v-card-text>
     </v-card>
   </div>
 </template>
@@ -183,8 +208,10 @@ const printedAt = ref('');
 const trendBucket = computed<'month' | 'quarter'>(() =>
   days.value > 180 ? 'quarter' : 'month',
 );
+// 최소 6개월 — 추이 차트는 "장기 패턴" 용도라 너무 짧으면 의미 없음.
+// 365일 선택 시엔 12개월 이상까지 늘림.
 const trendMonths = computed(() =>
-  Math.max(3, Math.min(24, Math.ceil(days.value / 30) + 2)),
+  Math.max(6, Math.min(24, Math.ceil(days.value / 30) + 3)),
 );
 // 캘린더 히트맵은 시각 가독성 한계로 **항상 최근 90일까지만** 표시.
 // 그 이상은 컬럼이 5px 이하로 줄어들어 사람이 못 읽음. 더 긴 기간 데이터는
@@ -339,15 +366,33 @@ const calSeries = computed(() => {
   return Object.values(grouped);
 });
 
+// 캘린더 범례 — 대시보드 히트맵과 동일 패턴 (커스텀 칩, 클릭 시 필터).
+interface CalRange { from: number; to: number; color: string; name: string }
+const calRanges: CalRange[] = [
+  { from: -1,  to: 0,   color: '#eef2f7', name: '데이터 없음' },
+  { from: 1,   to: 49,  color: '#ef9a9a', name: '미달' },
+  { from: 50,  to: 99,  color: '#ffcc80', name: '부분 달성' },
+  { from: 100, to: 100, color: '#66bb6a', name: '목표 달성' },
+];
+const activeCalIdx = ref<number | null>(null);
+function toggleCalRange(idx: number) {
+  activeCalIdx.value = activeCalIdx.value === idx ? null : idx;
+}
+
 const calOpts = computed(() => {
   const colCount = calSeries.value[0]?.data.length ?? 0;
-  // Rotate labels and thin them out as columns grow
   const rotate = colCount > 30 ? -45 : -15;
   const showEvery = colCount > 60 ? 7 : colCount > 30 ? 3 : 1;
+  // 활성 범위가 있으면 그 idx 만 원래 색, 나머지는 회색 dim
+  const ranges = calRanges.map((r, idx) => ({
+    ...r,
+    color: activeCalIdx.value === null || activeCalIdx.value === idx ? r.color : '#f5f5f5',
+  }));
   return {
     chart: { id: 'sla-cal', toolbar: { show: false }, animations: { enabled: false } },
     dataLabels: { enabled: false },
     stroke: { width: 1, colors: ['#fff'] },
+    legend: { show: false },  // 기본 범례 숨김 — 위 커스텀 칩 사용
     xaxis: {
       type: 'category',
       title: { text: '날짜 (MM-DD)' },
@@ -357,34 +402,22 @@ const calOpts = computed(() => {
         hideOverlappingLabels: true,
         trim: true,
         formatter: (val: string, _ts: any, opts: any) => {
-          // Only show every N-th label to avoid overlap on long ranges
           const idx = opts?.i ?? 0;
           return idx % showEvery === 0 ? val : '';
         },
       },
     },
     yaxis: {
-      labels: {
-        maxWidth: 200,
-        style: { fontSize: '11px' },
-      },
+      labels: { maxWidth: 200, style: { fontSize: '11px' } },
     },
     plotOptions: {
       heatmap: {
         shadeIntensity: 0,
         radius: 2,
         useFillColorAsStroke: false,
-        colorScale: {
-          ranges: [
-            { from: -1, to: 0, color: '#eef2f7', name: '데이터 없음' },
-            { from: 1, to: 49, color: '#fbb4b8', name: '미달' },
-            { from: 50, to: 99, color: '#ffd58a', name: '부분 달성' },
-            { from: 100, to: 100, color: '#7ecf86', name: '목표 달성' },
-          ],
-        },
+        colorScale: { ranges },
       },
     },
-    legend: { position: 'top' },
     tooltip: {
       custom: ({ seriesIndex, dataPointIndex, w }: any) => {
         const series = w.config.series[seriesIndex];
@@ -486,6 +519,47 @@ onBeforeUnmount(() => {
 </script>
 
 <style scoped>
+/* 캘린더 커스텀 범례 (대시보드 히트맵과 동일 패턴) */
+.cal-legend {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+.legend-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 10px;
+  border-radius: 16px;
+  border: 1px solid rgba(0, 0, 0, 0.12);
+  font-size: 0.8rem;
+  cursor: pointer;
+  user-select: none;
+  transition: all 0.15s ease;
+  background: rgba(255, 255, 255, 0.6);
+}
+.legend-chip:hover {
+  border-color: rgba(0, 0, 0, 0.4);
+  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.12);
+  transform: translateY(-1px);
+}
+.legend-chip.active {
+  border-color: rgb(var(--v-theme-primary));
+  box-shadow: 0 2px 8px rgba(25, 118, 210, 0.3);
+  font-weight: 600;
+}
+.legend-chip.dimmed {
+  opacity: 0.35;
+}
+.legend-swatch {
+  display: inline-block;
+  width: 14px;
+  height: 14px;
+  border-radius: 3px;
+  border: 1px solid rgba(0, 0, 0, 0.1);
+}
+
 .print-only {
   display: none;
 }

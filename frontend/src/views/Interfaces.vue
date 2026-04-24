@@ -156,6 +156,15 @@
             {{ categoryMeta(item.category).label }}
           </v-chip>
         </template>
+        <template #item.name="{ item }">
+          <div class="cell-truncate" :title="item.name" style="max-width: 180px">{{ item.name }}</div>
+        </template>
+        <template #item.organization="{ item }">
+          <div class="cell-truncate" :title="item.organization || ''" style="max-width: 140px">{{ item.organization || '-' }}</div>
+        </template>
+        <template #item.endpoint="{ item }">
+          <div class="cell-truncate" :title="item.endpoint" style="max-width: 220px">{{ item.endpoint }}</div>
+        </template>
         <template #item.protocol="{ item }">
           <v-chip size="small" :color="protocolColor(item.protocol)">{{ item.protocol }}</v-chip>
         </template>
@@ -807,6 +816,12 @@
   background-color: rgba(33, 150, 243, 0.12);
   outline: 2px solid #2196f3;
 }
+/* 긴 텍스트 셀 (이름·기관·엔드포인트) — 한 줄 ellipsis + tooltip 으로 표 너비 폭주 방지 */
+.cell-truncate {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
 </style>
 
 <script setup lang="ts">
@@ -903,16 +918,16 @@ const organizationOptions = computed(() =>
 );
 
 const headers = [
-  { title: 'ID', key: 'id', width: 60 },
-  { title: '방향', key: 'direction', width: 90, sortable: false },
-  { title: '분류', key: 'category', width: 130 },
-  { title: '이름', key: 'name' },
-  { title: '기관', key: 'organization' },
-  { title: '프로토콜', key: 'protocol' },
-  { title: '엔드포인트', key: 'endpoint' },
-  { title: '스케줄', key: 'schedule_cron' },
-  { title: '상태', key: 'enabled', width: 160 },
-  { title: '', key: 'actions', sortable: false, align: 'end' as const, width: 220 },
+  { title: 'ID', key: 'id', width: 50 },
+  { title: '방향', key: 'direction', width: 70, sortable: false },
+  { title: '분류', key: 'category', width: 100 },
+  { title: '이름', key: 'name', width: 180 },
+  { title: '기관', key: 'organization', width: 140 },
+  { title: '프로토콜', key: 'protocol', width: 80 },
+  { title: '엔드포인트', key: 'endpoint', width: 220 },
+  { title: '스케줄', key: 'schedule_cron', width: 120 },
+  { title: '상태', key: 'enabled', width: 140 },
+  { title: '', key: 'actions', sortable: false, align: 'end' as const, width: 180 },
 ];
 
 const rows = ref<InterfaceItem[]>([]);
@@ -1381,6 +1396,14 @@ onMounted(async () => {
     clearFiltersForFocus();
   }
   await load();
+  // 토폴로지에서 ?create=CATEGORY 로 진입 → 등록 다이얼로그 자동 오픈 + 분류 미리 선택
+  const createCat = route.query.create as string | undefined;
+  if (auth.isAdmin && createCat && ['INTERNAL_CORE', 'EXTERNAL_PARTNER', 'EXTERNAL_REGULATOR'].includes(createCat)) {
+    openCreate();
+    form.category = createCat as any;
+    // 쿼리 정리 — 다이얼로그 닫고 다시 열어도 자동 오픈 안 되게
+    router.replace({ path: '/interfaces', query: {} });
+  }
 });
 watch(
   () => route.query.focus,

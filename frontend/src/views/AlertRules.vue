@@ -349,16 +349,6 @@ onBeforeUnmount(() => clearInterval(nowTimer));
 </script>
 
 <style scoped>
-/* v-card-subtitle 기본은 한 줄 ellipsis — 안내 문구는 잘리지 않게 wrap 허용 */
-:deep(.v-card-subtitle) {
-  white-space: normal;
-  overflow: visible;
-  text-overflow: clip;
-  -webkit-line-clamp: unset;
-  line-height: 1.4;
-  padding-bottom: 8px;
-}
-
 /* severity 별 채널 체크박스 — wrap 시 행 간격 너무 벌어지는 문제 해결.
    v-checkbox 의 기본 min-height 가 40px+ 라 좁은 화면에서 두 줄로 wrap 되면
    체크박스 사이 빈 공간이 크게 느껴짐. column-gap 14px / row-gap 4px 로

@@ -299,8 +299,8 @@
             <v-list-item
               v-for="h in history"
               :key="h.id"
-              @click="question = h.question"
               :title="h.question.length > 60 ? h.question.slice(0, 60) + '…' : h.question"
+              @click="replayHistory(h)"
             >
               <template #title>
                 <div class="text-body-2" style="white-space: normal">
@@ -360,6 +360,9 @@
 </template>
 
 <script setup lang="ts">
+// keep-alive include 매칭용 — 페이지 이동 후 돌아와도 답변/입력 상태 유지
+defineOptions({ name: 'AiAssistant' });
+
 import { computed, onMounted, reactive, ref } from 'vue';
 import { AI, type AiHistoryItem, type AiSuggestion } from '@/api/client';
 import { formatDateTimeShort } from '@/utils/format';
@@ -449,7 +452,7 @@ const snack = reactive({ show: false, text: '', color: 'error' });
 const aiStatus = ref<{ configured: boolean; provider: string; model: string | null } | null>(null);
 const suggestions = ref<AiSuggestion[]>([]);
 const history = ref<AiHistoryItem[]>([]);
-const showHistory = ref(false);
+const showHistory = ref(true);  // 기본 펼침 — 사용자가 메뉴 존재 자체를 모를 수 있음
 
 onMounted(async () => {
   try {
@@ -458,6 +461,8 @@ onMounted(async () => {
     /* ignore */
   }
   await loadSuggestions();
+  // 히스토리 패널이 기본 펼침이라 데이터도 미리 로드
+  if (showHistory.value) await loadHistory();
 });
 
 async function loadSuggestions() {
@@ -653,6 +658,14 @@ function startProgress() {
 function stopProgress() {
   if (progressTimer) { clearInterval(progressTimer); progressTimer = null; }
   if (elapsedTimer) { clearInterval(elapsedTimer); elapsedTimer = null; }
+}
+
+// 히스토리 항목 클릭 → 질문 자동 채우기 + ask() 호출.
+// 대부분 캐시 hit 로 즉시 답변 복원 (백엔드 TTL 1시간 + repeated_failure 24시간 가드).
+// 캐시 만료된 경우엔 새로 분석되지만 사용자 흐름은 동일.
+function replayHistory(h: AiHistoryItem) {
+  question.value = h.question;
+  ask();
 }
 
 async function ask() {

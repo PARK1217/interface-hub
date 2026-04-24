@@ -116,6 +116,7 @@ export interface IncidentItem {
   detected_at: string;
   resolved_at: string | null;
   related_log_count?: number;
+  last_call_at?: string | null;  // 묶인 호출 중 가장 최근 발생
 }
 
 export interface SlaReportRow {

@@ -28,6 +28,16 @@
             <v-chip size="x-small" class="ml-2" color="deep-purple" variant="flat">
               {{ groups.INTERNAL_CORE.length }}
             </v-chip>
+            <v-spacer />
+            <v-btn
+              v-if="auth.isAdmin"
+              icon="mdi-plus"
+              size="x-small"
+              variant="tonal"
+              color="deep-purple"
+              title="사내 핵심 시스템 인터페이스 추가"
+              @click="addInterface('INTERNAL_CORE')"
+            />
           </v-card-title>
           <v-card-text>
             <div v-if="!groups.INTERNAL_CORE.length" class="text-caption text-medium-emphasis">
@@ -89,6 +99,16 @@
                 <v-chip size="x-small" class="ml-2" color="teal" variant="flat">
                   {{ groups.EXTERNAL_PARTNER.length }}
                 </v-chip>
+                <v-spacer />
+                <v-btn
+                  v-if="auth.isAdmin"
+                  icon="mdi-plus"
+                  size="x-small"
+                  variant="tonal"
+                  color="teal"
+                  title="외부 제휴사 인터페이스 추가"
+                  @click="addInterface('EXTERNAL_PARTNER')"
+                />
               </v-card-title>
               <v-card-text>
                 <div v-for="(itfs, org) in partnerByOrg" :key="org" class="mb-3">
@@ -131,6 +151,16 @@
                 <v-chip size="x-small" class="ml-2" color="red-darken-2" variant="flat">
                   {{ groups.EXTERNAL_REGULATOR.length }}
                 </v-chip>
+                <v-spacer />
+                <v-btn
+                  v-if="auth.isAdmin"
+                  icon="mdi-plus"
+                  size="x-small"
+                  variant="tonal"
+                  color="red-darken-2"
+                  title="외부 규제기관 인터페이스 추가"
+                  @click="addInterface('EXTERNAL_REGULATOR')"
+                />
               </v-card-title>
               <v-card-text>
                 <div v-for="(itfs, org) in regulatorByOrg" :key="org" class="mb-3">
@@ -212,8 +242,16 @@
 import { computed, onMounted, ref, watch } from 'vue';
 import { useRouter } from 'vue-router';
 import { Interfaces, Performance, type InterfaceItem } from '@/api/client';
+import { useAuthStore } from '@/stores/auth';
 
 const router = useRouter();
+const auth = useAuthStore();
+
+// 분류별 인터페이스 추가 — Interfaces 페이지로 이동하면서 ?create=CATEGORY 신호.
+// Interfaces 페이지가 이를 받아 등록 다이얼로그 자동 오픈 + 해당 분류 미리 선택.
+function addInterface(category: 'INTERNAL_CORE' | 'EXTERNAL_PARTNER' | 'EXTERNAL_REGULATOR') {
+  router.push({ path: '/interfaces', query: { create: category } });
+}
 
 const allInterfaces = ref<InterfaceItem[]>([]);
 const statsByInterface = ref<Map<number, { total: number; failures: number }>>(new Map());

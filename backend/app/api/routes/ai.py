@@ -263,7 +263,18 @@ def suggestions(
         if last_q:
             candidates.append(SuggestionItem(text=last_q, source="popular"))
 
-    # 2) 최근 미해결 incident 기반 — incident summary 를 본문에 포함해 매칭 높음
+    # 2) 최근 미해결 incident 기반 — 운영자가 "지금 발생 중인 장애" 를 즉시 분석 요청 가능.
+    # incident type 은 한글 라벨로 변환 (raw enum 노출 X). summary 는 너무 길면 잘라서 prompt 간결화.
+    INCIDENT_TYPE_LABEL = {
+        "TIMEOUT": "응답 시간 초과",
+        "AUTH_ERROR": "인증 오류",
+        "FORMAT_ERROR": "응답 포맷 오류",
+        "SERVER_ERROR": "서버 5xx 오류",
+        "SLOW_RESPONSE": "느린 응답",
+        "HIGH_FAILURE_RATE": "실패율 급증",
+        "SECRET_EXPIRY_WARNING": "인증 키 만료 임박",
+        "UNKNOWN": "원인 불명 실패",
+    }
     open_incidents = db.scalars(
         select(Incident)
         .where(Incident.resolved_at.is_(None))
@@ -274,10 +285,11 @@ def suggestions(
         itf = db.get(Interface, inc.interface_id)
         if not itf:
             continue
-        text = (
-            f"{itf.name} 에서 {inc.type.value if hasattr(inc.type, 'value') else inc.type} "
-            f"장애가 발생 중이야 ({inc.summary or '상세 없음'}). 원인 분석과 권장 조치 알려줘."
-        )
+        type_key = inc.type.value if hasattr(inc.type, "value") else str(inc.type)
+        type_label = INCIDENT_TYPE_LABEL.get(type_key, type_key)
+        # summary 가 인터페이스명을 다시 포함하면 (UNKNOWN on KIDI...) 중복 노출되니 그대로 안 붙이고
+        # "장애 분석" 형태로 짧게. 운영자가 클릭하면 LLM 이 해당 incident 의 컨텍스트 자체로 답변.
+        text = f"방금 {itf.name} 에 '{type_label}' 장애가 떴어. 원인 후보와 권장 조치 알려줘."
         candidates.append(SuggestionItem(text=text, source="incident_recent", interface_id=itf.id))
 
     # 3) 인터페이스 템플릿 — 활성 인터페이스 무작위
@@ -308,9 +320,46 @@ def suggestions(
     # 가 날 것이라 제외. popular / incident_recent 는 대부분 임계 통과, interface_template
     # 중 일부만 걸러짐.
     scores = score_questions(db, [c.text for c in candidates])
-    kept = [
-        (c, s) for c, s in zip(candidates, scores)
-        if s >= NO_MATCH_THRESHOLD
-    ]
-    # 원래 순서 유지 (popular → incident_recent → interface_template 우선)
-    return [c for c, _ in kept[:limit]]
+    valid = [c for c, s in zip(candidates, scores) if s >= NO_MATCH_THRESHOLD]
+
+    # 5) 다양성 보장 — 비슷한 prompt (같은 인터페이스 / 비슷한 텍스트) 중복 제거 + source 라운드로빈.
+    # 같은 인터페이스 incident 가 여러 개거나 popular 에 비슷한 질문이 몰려있으면
+    # 4개 추천이 다 같은 류로 도배되는 문제를 막음.
+    import re as _re
+    def _tokens(text: str) -> set[str]:
+        # 한글/영문/숫자 단어 단위로 토큰화 — 공백·특수문자 차이 무시
+        return set(_re.findall(r"[가-힣A-Za-z0-9]+", text.lower()))
+
+    def _too_similar(a: set[str], existing: list[set[str]], threshold: float = 0.5) -> bool:
+        # 기존 선정된 prompt 와 토큰 jaccard >= threshold 면 "비슷" 판정 → 제외
+        for b in existing:
+            if not a or not b:
+                continue
+            inter = len(a & b)
+            ratio = inter / max(len(a), len(b))
+            if ratio >= threshold:
+                return True
+        return False
+
+    seen_iface: set[int] = set()
+    seen_token_sets: list[set[str]] = []
+    selected: list[SuggestionItem] = []
+    # 우선순위: 현재 미해결 장애가 가장 시급 → 자주 묻는 질문 → 일반 인터페이스 템플릿.
+    # 각 source 안에서 dedup 통과한 것을 다 채운 뒤 다음 source 로.
+    priority_sources = ("incident_recent", "popular", "interface_template")
+    for src in priority_sources:
+        if len(selected) >= limit:
+            break
+        for c in [x for x in valid if x.source == src]:
+            if len(selected) >= limit:
+                break
+            if c.interface_id and c.interface_id in seen_iface:
+                continue
+            tokens = _tokens(c.text)
+            if _too_similar(tokens, seen_token_sets):
+                continue
+            selected.append(c)
+            if c.interface_id:
+                seen_iface.add(c.interface_id)
+            seen_token_sets.append(tokens)
+    return selected

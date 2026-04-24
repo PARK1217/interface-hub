@@ -1,7 +1,7 @@
 <template>
   <div>
     <div class="d-flex align-center mb-3">
-      <h2 class="text-h5">재시도 효과 분석</h2>
+      <h2 class="text-h5">자동 복구 분석</h2>
       <v-spacer />
       <v-btn-toggle v-model="windowDays" mandatory density="compact" variant="outlined" color="primary">
         <v-btn :value="1" size="small">1일</v-btn>
@@ -88,7 +88,7 @@
     <!-- 인터페이스별 효과 표 -->
     <v-card>
       <v-card-title class="d-flex align-center">
-        인터페이스별 재시도 효과
+        인터페이스별 자동 복구 효과
         <v-chip size="small" class="ml-2" variant="tonal">
           {{ rows.length }}건
         </v-chip>

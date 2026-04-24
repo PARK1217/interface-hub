@@ -77,7 +77,14 @@
 
     <v-main>
       <v-container fluid class="pa-6">
-        <router-view />
+        <!-- 모든 페이지 keep-alive — 로그인 세션 동안 마지막 검색/필터/입력 상태 유지.
+          라이브 데이터 (대시보드 차트, 장애 카운트) 는 WebSocket 으로 push 되므로
+          keep-alive 여도 실시간 갱신됨. 로그아웃 시 App.vue 자체가 다시 마운트되어 리셋. -->
+        <router-view v-slot="{ Component }">
+          <keep-alive>
+            <component :is="Component" />
+          </keep-alive>
+        </router-view>
       </v-container>
     </v-main>
 
@@ -219,7 +226,7 @@ const routes = [
   { path: '/logs', title: '호출 로그', icon: 'mdi-file-document-outline' },
   { path: '/incidents', title: '장애', icon: 'mdi-alert-circle-outline' },
   { path: '/performance', title: '성능 관리', icon: 'mdi-speedometer' },
-  { path: '/retry-analytics', title: '재시도 효과', icon: 'mdi-replay' },
+  { path: '/retry-analytics', title: '자동 복구 분석', icon: 'mdi-replay' },
   { path: '/sla', title: 'SLA', icon: 'mdi-chart-line' },
   { path: '/ai', title: 'AI 분석', icon: 'mdi-robot-outline' },
   // 감사 로그는 OPERATOR 에게는 메뉴 숨김 (감사관/관리자만)

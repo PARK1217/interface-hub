@@ -20,12 +20,27 @@ from app.services.incident_helpers import mark_related_handled, related_log_quer
 router = APIRouter(prefix="/incidents", tags=["incidents"])
 
 
-def _to_out(db: Session, incident: Incident, *, count: int | None = None) -> IncidentOut:
+def _to_out(
+    db: Session,
+    incident: Incident,
+    *,
+    count: int | None = None,
+    last_call_at=None,
+) -> IncidentOut:
+    itf = db.get(Interface, incident.interface_id) if (count is None or last_call_at is None) else None
     if count is None:
-        itf = db.get(Interface, incident.interface_id)
         count = len(db.scalars(related_log_query(incident, itf)).all())
+    if last_call_at is None and itf is not None:
+        # 가장 최근 호출 시각 1건만 — incident 가 묶고 있는 호출들 중 마지막
+        from sqlalchemy import func as _func
+        last_call_at = db.scalar(
+            related_log_query(incident, itf)
+            .with_only_columns(_func.max(CallLog.called_at))
+            .order_by(None)
+        )
     payload = IncidentOut.model_validate(incident)
     payload.related_log_count = count
+    payload.last_call_at = last_call_at
     return payload
 
 
@@ -46,12 +61,15 @@ def list_incidents(
         i.id: i
         for i in db.scalars(select(Interface).where(Interface.id.in_(iface_ids))).all()
     }
+    from sqlalchemy import func as _func
     out = []
     for inc in incidents:
-        count = len(
-            db.scalars(related_log_query(inc, interfaces.get(inc.interface_id))).all()
-        )
-        out.append(_to_out(db, inc, count=count))
+        itf = interfaces.get(inc.interface_id)
+        rel_q = related_log_query(inc, itf)
+        rel_logs = db.scalars(rel_q).all()
+        count = len(rel_logs)
+        last_call_at = max((r.called_at for r in rel_logs), default=None)
+        out.append(_to_out(db, inc, count=count, last_call_at=last_call_at))
     return out
 
 

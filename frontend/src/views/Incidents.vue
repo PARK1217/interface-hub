@@ -70,7 +70,19 @@
           <v-chip size="small" variant="outlined">{{ item.type }}</v-chip>
         </template>
         <template #item.detected_at="{ item }">
-          <span class="text-caption">{{ fmt(item.detected_at) }}</span>
+          <div class="text-caption" style="line-height: 1.4">
+            <div>
+              <v-icon icon="mdi-clock-start" size="x-small" class="mr-1" color="grey" />
+              <span :title="`첫 감지: ${fmt(item.detected_at)}`">{{ fmt(item.detected_at) }}</span>
+            </div>
+            <div v-if="item.last_call_at && item.last_call_at !== item.detected_at" class="mt-1">
+              <v-icon icon="mdi-clock-end" size="x-small" class="mr-1" :color="item.resolved_at ? 'grey' : 'error'" />
+              <span :title="`최근 발생: ${fmt(item.last_call_at)}`">
+                {{ sameDay(item.detected_at, item.last_call_at) ? fmtTimeOnly(item.last_call_at) : fmt(item.last_call_at) }}
+              </span>
+              <span v-if="!item.resolved_at" class="text-error ml-1">진행중</span>
+            </div>
+          </div>
         </template>
         <template #item.resolved_at="{ item }">
           <span v-if="item.resolved_at" class="text-caption">{{ fmt(item.resolved_at) }}</span>
@@ -215,7 +227,7 @@ function clearFocus() {
 
 const headers = [
   { title: '상태', key: 'state', width: 110 },
-  { title: '감지 시각', key: 'detected_at' },
+  { title: '발생 기간', key: 'detected_at', width: 220 },
   { title: '인터페이스 ID', key: 'interface_id', width: 110 },
   { title: '유형', key: 'type' },
   { title: '심각도', key: 'severity' },
@@ -263,6 +275,15 @@ function sevLabel(s: string): string {
 }
 
 const fmt = formatDateTime;
+
+// 같은 날(YYYY-MM-DD) 인지 — 같은 날이면 시각만 노출해 가독성 확보
+function sameDay(a: string, b: string): boolean {
+  return a.slice(0, 10) === b.slice(0, 10);
+}
+function fmtTimeOnly(iso: string): string {
+  const d = new Date(iso);
+  return `${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`;
+}
 
 async function load(only?: boolean) {
   if (only !== undefined) unresolvedOnly.value = only;

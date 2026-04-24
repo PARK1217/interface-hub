@@ -67,7 +67,12 @@
 
     <!-- Percentile table -->
     <v-card class="mt-4">
-      <v-card-title class="text-subtitle-1">인터페이스별 응답시간 백분위 (정렬: p95 내림차순)</v-card-title>
+      <v-card-title class="text-subtitle-1">인터페이스별 응답시간 분포</v-card-title>
+      <v-card-subtitle>
+        호출 응답시간을 빠른 순으로 줄세웠을 때 — <strong>중앙값</strong>은 절반이 이 시간 안에 끝났다는 뜻이고,
+        <strong>상위 5% / 1%</strong>는 가장 느린 5% / 1% 호출의 기준선입니다.
+        상위 95% (p95) 가 SLA 판정의 일반적 기준.
+      </v-card-subtitle>
       <v-data-table
         :headers="pHeaders"
         :items="rows"
@@ -131,10 +136,10 @@ const pHeaders = [
   { title: '기관', key: 'organization' },
   { title: '호출 수', key: 'total_calls', width: 90 },
   { title: '실패율', key: 'failure_rate', width: 100 },
-  { title: 'p50', key: 'p50_ms', width: 90 },
-  { title: 'p95', key: 'p95_ms', width: 90 },
-  { title: 'p99', key: 'p99_ms', width: 90 },
-  { title: 'max', key: 'max_ms', width: 90 },
+  { title: '중앙값 (p50)', key: 'p50_ms', width: 120 },
+  { title: '상위 5% (p95)', key: 'p95_ms', width: 130 },
+  { title: '상위 1% (p99)', key: 'p99_ms', width: 130 },
+  { title: '최댓값', key: 'max_ms', width: 100 },
 ];
 
 const slowHeaders = [

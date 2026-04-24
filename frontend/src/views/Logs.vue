@@ -32,16 +32,64 @@
           <v-col cols="12" md="2">
             <v-select v-model="filter.protocol" :items="protocols" label="프로토콜" clearable density="compact" hide-details />
           </v-col>
-          <v-col cols="12" md="3">
+          <v-col cols="12" md="4">
             <v-text-field v-model="filter.keyword" label="에러 메시지 키워드" clearable density="compact" hide-details />
           </v-col>
           <v-col cols="12" md="2" class="d-flex align-center" style="padding-left: 20px">
             <v-switch v-model="filter.failedOnly" hide-details color="warning" label="실패만" density="compact" />
           </v-col>
-          <v-col cols="12" md="1">
-            <v-btn block color="primary" @click="load" :loading="loading">검색</v-btn>
-          </v-col>
         </v-row>
+        <v-divider class="my-3" />
+        <div class="d-flex align-center" style="gap: 8px; flex-wrap: wrap">
+          <v-text-field
+            :model-value="filter.sinceText"
+            label="시작"
+            placeholder="2026-04-25 09:00"
+            density="compact"
+            hide-details
+            clearable
+            class="dt-input dt-input-text"
+            :error="!!sinceError"
+            @update:model-value="(v) => onDtInput('sinceText', v)"
+          />
+          <span class="text-caption text-medium-emphasis mx-1">~</span>
+          <v-text-field
+            :model-value="filter.untilText"
+            label="종료"
+            placeholder="2026-04-25 18:00"
+            density="compact"
+            hide-details
+            clearable
+            class="dt-input dt-input-text"
+            :error="!!untilError"
+            @update:model-value="(v) => onDtInput('untilText', v)"
+          />
+          <div class="d-flex align-center ml-3" style="gap: 6px; flex-wrap: wrap; flex: 1">
+            <v-chip
+              v-for="q in quickRanges"
+              :key="q.label"
+              size="small"
+              :color="activeQuick === q.hours ? 'primary' : ''"
+              :variant="activeQuick === q.hours ? 'flat' : 'tonal'"
+              @click="applyQuickRange(q.hours)"
+            >
+              {{ q.label }}
+            </v-chip>
+            <v-chip
+              v-if="hasTimeRange"
+              size="small"
+              variant="text"
+              prepend-icon="mdi-close"
+              @click="clearTimeRange"
+            >
+              해제
+            </v-chip>
+          </div>
+          <v-btn color="primary" @click="load" :loading="loading">검색</v-btn>
+        </div>
+        <div v-if="sinceError || untilError" class="text-caption text-error mt-1 ml-1">
+          형식 오류: <code>YYYY-MM-DD</code> 또는 <code>YYYY-MM-DD HH:mm</code> 으로 입력해주세요.
+        </div>
       </v-card-text>
     </v-card>
 
@@ -316,7 +364,87 @@ const filter = reactive<{
   protocol: string | null;
   keyword: string;
   failedOnly: boolean;
-}>({ interface_id: null, status: null, protocol: null, keyword: '', failedOnly: false });
+  // 단순 텍스트 입력 — 'YYYY-MM-DD' 또는 'YYYY-MM-DD HH:mm' 자유 형식.
+  // 시간 생략 시 since 는 00:00, until 은 23:59 기본값.
+  sinceText: string | null;
+  untilText: string | null;
+}>({
+  interface_id: null, status: null, protocol: null, keyword: '', failedOnly: false,
+  sinceText: null, untilText: null,
+});
+
+// 빠른 선택 — 지난 N시간/일 구간을 since 에 채움 (until 은 비워서 "지금까지")
+const quickRanges = [
+  { label: '지난 1시간', hours: 1 },
+  { label: '지난 6시간', hours: 6 },
+  { label: '지난 24시간', hours: 24 },
+  { label: '지난 7일', hours: 24 * 7 },
+];
+// 빠른 선택 칩 활성 상태 (직접 입력 시 자동 해제)
+const activeQuick = ref<number | null>(null);
+
+const hasTimeRange = computed(() => !!(filter.sinceText || filter.untilText));
+
+function pad2(n: number): string { return String(n).padStart(2, '0'); }
+
+// 'YYYY-MM-DD' 또는 'YYYY-MM-DD HH:mm' 파싱 → ISO string. 형식 안 맞으면 null + 에러 표시용.
+const DT_RE = /^(\d{4})-(\d{1,2})-(\d{1,2})(?:[ T](\d{1,2}):(\d{1,2}))?$/;
+
+function parseDT(text: string | null, fallbackTime: [number, number]): string | null | 'INVALID' {
+  if (!text || !text.trim()) return null;
+  const m = DT_RE.exec(text.trim());
+  if (!m) return 'INVALID';
+  const [, y, mo, d, h, mi] = m;
+  const date = new Date(
+    Number(y), Number(mo) - 1, Number(d),
+    h !== undefined ? Number(h) : fallbackTime[0],
+    mi !== undefined ? Number(mi) : fallbackTime[1],
+  );
+  if (isNaN(date.getTime())) return 'INVALID';
+  return date.toISOString();
+}
+
+const sinceError = computed(() => parseDT(filter.sinceText, [0, 0]) === 'INVALID');
+const untilError = computed(() => parseDT(filter.untilText, [23, 59]) === 'INVALID');
+
+// 사용자가 숫자만 입력해도 자동으로 'YYYY-MM-DD HH:mm' 형식으로 마스킹.
+// '20260425' → '2026-04-25', '202604250900' → '2026-04-25 09:00'.
+// 기존 구분자는 무시하고 숫자만 추출 후 자릿수에 따라 다시 채움 (paste 도 자동 정리).
+function maskDateTime(input: string | null): string | null {
+  if (!input) return null;
+  const digits = input.replace(/\D/g, '').slice(0, 12);
+  if (!digits) return '';
+  let s = digits.slice(0, 4);
+  if (digits.length >= 5) s += '-' + digits.slice(4, 6);
+  if (digits.length >= 7) s += '-' + digits.slice(6, 8);
+  if (digits.length >= 9) s += ' ' + digits.slice(8, 10);
+  if (digits.length >= 11) s += ':' + digits.slice(10, 12);
+  return s;
+}
+
+function onDtInput(field: 'sinceText' | 'untilText', v: string | null) {
+  filter[field] = maskDateTime(v);
+  activeQuick.value = null;
+}
+
+function applyQuickRange(hours: number) {
+  if (activeQuick.value === hours) {
+    clearTimeRange();
+    return;
+  }
+  const d = new Date(Date.now() - hours * 3600_000);
+  filter.sinceText = `${d.getFullYear()}-${pad2(d.getMonth() + 1)}-${pad2(d.getDate())} ${pad2(d.getHours())}:${pad2(d.getMinutes())}`;
+  filter.untilText = null;
+  activeQuick.value = hours;
+  load();
+}
+
+function clearTimeRange() {
+  filter.sinceText = null;
+  filter.untilText = null;
+  activeQuick.value = null;
+  load();
+}
 
 function notify(text: string, color = 'success') {
   Object.assign(snack, { show: true, text, color });
@@ -352,6 +480,11 @@ async function load() {
     if (filter.status) params.status = filter.status;
     if (filter.protocol) params.protocol = filter.protocol;
     if (filter.keyword) params.keyword = filter.keyword;
+    // 시작: 시간 미입력 → 00:00 (그 날 시작부터). 종료: 시간 미입력 → 23:59 (그 날 끝까지).
+    const since = parseDT(filter.sinceText, [0, 0]);
+    const until = parseDT(filter.untilText, [23, 59]);
+    if (since && since !== 'INVALID') params.since = since;
+    if (until && until !== 'INVALID') params.until = until;
     let data = (await CallLogs.search(params)).data;
     if (filter.failedOnly) {
       data = data.filter((r) => r.status !== 'SUCCESS' && !r.is_reprocessed);
@@ -437,6 +570,17 @@ onMounted(load);
 </script>
 
 <style scoped>
+/* 시간 필터 텍스트 input — 'YYYY-MM-DD HH:mm' 한 칸. 키보드만으로 빠른 입력. */
+.dt-input {
+  flex: 0 0 auto;
+}
+.dt-input-text {
+  width: 200px;
+}
+.dt-input-text :deep(input) {
+  font-variant-numeric: tabular-nums;
+}
+
 .json-block {
   background: #0e1116;
   color: #e6edf3;
