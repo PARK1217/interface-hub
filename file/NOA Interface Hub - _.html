@@ -1,0 +1,674 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>NOA Interface Hub — 개발 문서</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600;700&family=IBM+Plex+Sans+KR:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+<style>
+  :root{
+    --bg:#fafbfc; --surface:#fff; --surface-2:#f4f6f8; --surface-3:#eceff3;
+    --ink:#0f1419; --ink-2:#2b3340; --ink-3:#5b6573; --ink-4:#8a94a3;
+    --line:#e3e7ec; --line-2:#d5dbe3;
+    --accent:oklch(0.58 0.11 220); --accent-soft:oklch(0.96 0.02 220); --accent-ink:oklch(0.36 0.09 220);
+    --warn:oklch(0.62 0.12 60); --warn-soft:oklch(0.96 0.03 75);
+    --ok:oklch(0.58 0.10 155);
+    --danger:oklch(0.58 0.15 25); --danger-soft:oklch(0.96 0.03 25);
+    --code-bg:#0f1419; --code-ink:#e6eaf0; --code-comment:#7a8693; --code-str:#9fc3a6; --code-kw:#a2b7d9;
+    --shadow:0 1px 2px rgba(15,20,25,.04),0 4px 16px rgba(15,20,25,.04);
+    --mono:"IBM Plex Mono",ui-monospace,SFMono-Regular,Menlo,monospace;
+    --sans:"IBM Plex Sans KR","IBM Plex Sans",-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif;
+  }
+  *{box-sizing:border-box} html,body{margin:0;padding:0}
+  body{font-family:var(--sans);background:var(--bg);color:var(--ink);font-size:15px;line-height:1.65;-webkit-font-smoothing:antialiased;text-rendering:optimizeLegibility}
+  a{color:var(--accent-ink);text-decoration:none;border-bottom:1px solid transparent;transition:border-color .15s}
+  a:hover{border-bottom-color:var(--accent-ink)}
+
+  /* Floating PDF button */
+  .print-cta{position:fixed;top:20px;right:20px;z-index:100;background:var(--ink);color:#fff;border:0;padding:11px 18px;border-radius:10px;font-family:var(--sans);font-size:13px;font-weight:500;cursor:pointer;box-shadow:0 4px 16px rgba(15,20,25,.18);display:inline-flex;align-items:center;gap:10px}
+  .print-cta:hover{background:#1b2330}
+  .print-cta svg{width:14px;height:14px}
+  .print-cta .ico{font-family:var(--mono);font-size:10.5px;opacity:.7;letter-spacing:.05em}
+
+  .shell{display:grid;grid-template-columns:280px minmax(0,1fr);max-width:1240px;margin:0 auto}
+  aside.toc{position:sticky;top:0;height:100vh;padding:40px 28px 32px;border-right:1px solid var(--line);overflow-y:auto;background:var(--surface)}
+  .brand{display:flex;align-items:center;gap:12px;margin-bottom:32px;padding-bottom:22px;border-bottom:1px solid var(--line)}
+  .brand-mark{width:36px;height:36px;background:var(--ink);color:#fff;display:grid;place-items:center;border-radius:8px;font-family:var(--mono);font-weight:600;font-size:14px}
+  .brand-text .name{font-weight:600;font-size:14px;color:var(--ink);line-height:1.2}
+  .brand-text .sub{font-size:10.5px;color:var(--ink-4);font-family:var(--mono);letter-spacing:.04em;margin-top:3px}
+
+  nav.toc-nav ol{list-style:none;padding:0;margin:0;counter-reset:toc}
+  nav.toc-nav li{counter-increment:toc;margin:1px 0}
+  nav.toc-nav a{display:flex;align-items:baseline;gap:10px;padding:6px 10px;font-size:13px;color:var(--ink-3);border-radius:6px;border-bottom:0;line-height:1.35}
+  nav.toc-nav a:hover{background:var(--surface-2);color:var(--ink)}
+  nav.toc-nav a::before{content:counter(toc,decimal-leading-zero);font-family:var(--mono);font-size:10.5px;color:var(--ink-4);min-width:20px;font-weight:500}
+  .toc-label{font-size:10.5px;font-family:var(--mono);text-transform:uppercase;letter-spacing:.12em;color:var(--ink-4);margin:0 0 10px 10px;font-weight:500}
+
+  main{padding:52px 60px 100px;min-width:0}
+
+  /* Hero */
+  .hero{margin-bottom:52px;padding-bottom:36px;border-bottom:1px solid var(--line)}
+  .eyebrow{display:inline-flex;align-items:center;gap:8px;font-family:var(--mono);font-size:11.5px;color:var(--ink-3);background:var(--surface-2);padding:5px 10px;border-radius:4px;border:1px solid var(--line);letter-spacing:.02em;margin-bottom:20px}
+  .eyebrow .dot{width:6px;height:6px;border-radius:50%;background:var(--ok)}
+  h1{font-size:40px;line-height:1.15;font-weight:600;letter-spacing:-.02em;margin:0 0 18px;color:var(--ink)}
+  .lede{font-size:16px;color:var(--ink-2);max-width:64ch;line-height:1.65;margin:0}
+  .hero-meta{display:flex;flex-wrap:wrap;gap:32px;margin-top:28px;font-size:13px}
+  .hero-meta dt{font-family:var(--mono);font-size:10.5px;text-transform:uppercase;letter-spacing:.08em;color:var(--ink-4);margin-bottom:4px;font-weight:500}
+  .hero-meta dd{margin:0;color:var(--ink-2);font-weight:500}
+
+  section{margin-bottom:60px;scroll-margin-top:24px}
+  .sec-head{display:flex;align-items:baseline;gap:16px;margin-bottom:20px;padding-bottom:12px;border-bottom:1px solid var(--line)}
+  .sec-num{font-family:var(--mono);font-size:12.5px;color:var(--accent-ink);font-weight:500}
+  h2{font-size:25px;font-weight:600;margin:0;letter-spacing:-.01em;color:var(--ink)}
+  .sec-sub{margin-left:auto;font-size:11.5px;font-family:var(--mono);color:var(--ink-4)}
+
+  h3{font-size:16.5px;font-weight:600;margin:26px 0 10px;letter-spacing:-.005em;color:var(--ink);display:flex;align-items:baseline;gap:10px}
+  h3 .num{font-family:var(--mono);font-size:11px;font-weight:500;color:var(--accent-ink);background:var(--accent-soft);padding:2px 8px;border-radius:4px;letter-spacing:.02em}
+  h4{font-size:13.5px;font-weight:600;margin:16px 0 6px;color:var(--ink);font-family:var(--mono);text-transform:uppercase;letter-spacing:.06em}
+
+  p{margin:0 0 12px;color:var(--ink-2)}
+  ul{margin:8px 0 14px;padding-left:22px;color:var(--ink-2)}
+  ul li{margin:3px 0}
+  ul li strong{color:var(--ink);font-weight:600}
+
+  pre{background:var(--code-bg);color:var(--code-ink);padding:18px 22px;border-radius:10px;overflow-x:auto;font-family:var(--mono);font-size:12.5px;line-height:1.7;margin:14px 0 18px;box-shadow:var(--shadow);position:relative}
+  pre::before{content:attr(data-lang);position:absolute;top:10px;right:14px;font-size:10px;color:var(--ink-4);font-family:var(--mono);text-transform:uppercase;letter-spacing:.08em}
+  pre .c{color:var(--code-comment);font-style:italic}
+  pre .s{color:var(--code-str)}
+  pre .k{color:var(--code-kw)}
+  code{font-family:var(--mono);font-size:.875em;background:var(--surface-3);color:var(--ink);padding:2px 6px;border-radius:4px;border:1px solid var(--line)}
+  pre code{background:transparent;border:0;padding:0;color:inherit;font-size:inherit}
+
+  .table-wrap{border:1px solid var(--line);border-radius:10px;overflow:hidden;margin:14px 0 18px;background:var(--surface);box-shadow:var(--shadow)}
+  table{width:100%;border-collapse:collapse;font-size:13.5px}
+  thead{background:var(--surface-2)}
+  th{text-align:left;font-weight:600;font-size:10.5px;text-transform:uppercase;letter-spacing:.08em;color:var(--ink-3);padding:11px 14px;border-bottom:1px solid var(--line);font-family:var(--mono)}
+  td{padding:11px 14px;border-bottom:1px solid var(--line);vertical-align:top;color:var(--ink-2)}
+  tbody tr:last-child td{border-bottom:0}
+  tbody tr:hover td{background:var(--surface-2)}
+  td code{font-size:12px;background:var(--surface-2)}
+  td:first-child{color:var(--ink);font-weight:500}
+  .check{color:var(--ok);font-weight:600;text-align:center}
+  .x{color:var(--ink-4);text-align:center}
+  th.c,td.c{text-align:center}
+
+  ol.steps{list-style:none;counter-reset:step;padding:0;margin:14px 0 18px}
+  ol.steps > li{counter-increment:step;position:relative;padding:12px 16px 12px 56px;margin-bottom:6px;background:var(--surface);border:1px solid var(--line);border-radius:8px;font-size:13.5px;color:var(--ink-2)}
+  ol.steps > li::before{content:counter(step,decimal-leading-zero);position:absolute;left:14px;top:12px;font-family:var(--mono);font-size:11.5px;font-weight:600;color:var(--accent-ink);background:var(--accent-soft);padding:3px 8px;border-radius:4px}
+
+  /* Card grids */
+  .grid-2{display:grid;grid-template-columns:repeat(auto-fill,minmax(320px,1fr));gap:14px;margin:16px 0}
+  .card{background:var(--surface);border:1px solid var(--line);border-radius:10px;padding:18px 20px}
+  .card-head{display:flex;align-items:center;gap:10px;margin-bottom:10px;flex-wrap:wrap}
+  .card-num{font-family:var(--mono);font-size:11px;font-weight:600;color:var(--accent-ink);background:var(--accent-soft);padding:2px 8px;border-radius:4px;letter-spacing:.02em}
+  .card-title{font-size:14.5px;font-weight:600;color:var(--ink);letter-spacing:-.005em}
+  .card-intent{font-size:12px;color:var(--ink-3);margin:0 0 10px;line-height:1.5}
+  .card-intent strong{color:var(--ink);font-weight:600}
+  .card h4{margin:10px 0 4px}
+  .card ul{margin:4px 0 0;padding-left:18px;font-size:13px}
+  .card ul li{margin:3px 0;color:var(--ink-2)}
+
+  /* Stack */
+  .stack-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(220px,1fr));gap:10px;margin:16px 0}
+  .stack-card{background:var(--surface);border:1px solid var(--line);border-radius:10px;padding:14px 16px}
+  .stack-card .area{font-family:var(--mono);font-size:10.5px;color:var(--ink-4);text-transform:uppercase;letter-spacing:.08em;margin-bottom:6px;font-weight:500}
+  .stack-card .items{font-size:12.5px;color:var(--ink-2);line-height:1.55}
+
+  /* Callouts */
+  .callout{display:flex;gap:14px;padding:14px 18px;background:var(--accent-soft);border:1px solid oklch(0.90 0.03 220);border-left:3px solid var(--accent);border-radius:8px;margin:16px 0;font-size:13.5px}
+  .callout.warn{background:var(--warn-soft);border-color:oklch(0.88 0.05 65);border-left-color:var(--warn)}
+  .callout .ico{font-family:var(--mono);font-size:10.5px;font-weight:600;color:var(--accent-ink);background:#fff;border:1px solid oklch(0.88 0.03 220);padding:2px 8px;border-radius:4px;letter-spacing:.05em;height:fit-content;white-space:nowrap}
+  .callout.warn .ico{color:oklch(0.40 0.11 60);border-color:oklch(0.85 0.06 65)}
+  .callout p{margin:0;color:var(--ink-2)}
+
+  /* Design decisions */
+  .decision{background:var(--surface);border:1px solid var(--line);border-radius:10px;padding:18px 22px;margin:12px 0}
+  .decision h3{margin:0 0 8px}
+  .decision p{font-size:13.5px;margin:0 0 8px}
+  .decision p:last-child{margin-bottom:0}
+  .decision ul{font-size:13px;margin:6px 0 0}
+
+  /* FAQ */
+  .faq{border:1px solid var(--line);border-radius:10px;background:var(--surface);overflow:hidden;margin:14px 0}
+  .faq-item{padding:16px 20px;border-bottom:1px solid var(--line)}
+  .faq-item:last-child{border-bottom:0}
+  .faq-q{display:flex;align-items:flex-start;gap:12px;font-weight:600;color:var(--ink);font-size:14px;margin-bottom:6px}
+  .faq-q .q-mark{font-family:var(--mono);font-size:10.5px;font-weight:600;color:var(--accent-ink);background:var(--accent-soft);padding:3px 8px;border-radius:4px;height:fit-content;margin-top:2px;flex-shrink:0;letter-spacing:.02em}
+  .faq-a{padding-left:34px;color:var(--ink-2);font-size:13px;line-height:1.65}
+
+  footer.doc-foot{margin-top:48px;padding-top:24px;border-top:1px solid var(--line);display:flex;justify-content:space-between;flex-wrap:wrap;gap:24px;font-size:12px;color:var(--ink-4)}
+  footer.doc-foot .col strong{color:var(--ink-2);font-weight:600;display:block;margin-bottom:3px}
+
+  @media (max-width:820px){
+    .shell{grid-template-columns:1fr}
+    aside.toc{position:static;height:auto;border-right:0;border-bottom:1px solid var(--line)}
+    main{padding:32px 22px 80px}
+    h1{font-size:28px}
+  }
+
+  /* ============ PRINT ============ */
+  @page{size:A4;margin:17mm 15mm 18mm}
+  @media print{
+    :root{--bg:#fff;--surface:#fff;--surface-2:#f7f8fa}
+    body{background:#fff;font-size:10pt;line-height:1.5}
+    .print-cta,aside.toc{display:none !important}
+    .shell{display:block;max-width:none}
+    main{padding:0}
+    .hero{margin-bottom:20px;padding-bottom:16px}
+    h1{font-size:22pt;margin-bottom:8px}
+    .lede{font-size:10.5pt}
+    .eyebrow{margin-bottom:10px}
+    .hero-meta{gap:20px;margin-top:14px}
+    section{margin-bottom:22px}
+    .sec-head{margin-bottom:12px;padding-bottom:7px}
+    h2{font-size:15pt}
+    h3{font-size:11.5pt;margin:14px 0 5px;page-break-after:avoid}
+    h4{font-size:9.5pt}
+    section > .sec-head{page-break-after:avoid}
+    .card,.stack-card,.faq-item,.callout,ol.steps > li,.table-wrap,.decision,pre{page-break-inside:avoid}
+    pre{font-size:8.5pt;line-height:1.5;padding:10px 12px;box-shadow:none;border:1px solid #333}
+    pre::before{display:none}
+    .table-wrap{box-shadow:none}
+    table{font-size:9pt}
+    th{font-size:7.5pt;padding:6px 9px}
+    td{padding:6px 9px}
+    .grid-2{grid-template-columns:1fr 1fr;gap:7px}
+    .card{padding:10px 12px}
+    .card-title{font-size:10pt}
+    .card ul{font-size:9pt}
+    .card-intent{font-size:8.5pt}
+    .stack-grid{grid-template-columns:1fr 1fr 1fr;gap:6px}
+    .stack-card{padding:8px 10px}
+    .stack-card .items{font-size:8.5pt}
+    .faq-item{padding:10px 12px}
+    .faq-q{font-size:10pt}
+    .faq-a{font-size:9pt;padding-left:28px}
+    ol.steps > li{padding:7px 12px 7px 44px;font-size:9.5pt}
+    .callout{font-size:9pt;padding:8px 12px}
+    .decision{padding:12px 14px}
+    .decision p,.decision ul{font-size:9.5pt}
+    footer.doc-foot{margin-top:20px;padding-top:12px;font-size:9pt}
+    a{color:var(--ink-2);border-bottom:0}
+  }
+</style>
+</head>
+<body>
+
+<button class="print-cta" onclick="window.print()">
+  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 6 2 18 2 18 9"></polyline><path d="M6 18H4a2 2 0 0 1-2-2v-5a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2v5a2 2 0 0 1-2 2h-2"></path><rect x="6" y="14" width="12" height="8"></rect></svg>
+  PDF 저장 / 인쇄 <span class="ico">⌘P</span>
+</button>
+
+<div class="shell">
+
+  <aside class="toc">
+    <div class="brand">
+      <div class="brand-mark">N</div>
+      <div class="brand-text">
+        <div class="name">NOA Interface Hub</div>
+        <div class="sub">DEVELOPMENT DOCS</div>
+      </div>
+    </div>
+    <div class="toc-label">Contents</div>
+    <nav class="toc-nav">
+      <ol>
+        <li><a href="#s1">시스템 개요</a></li>
+        <li><a href="#s2">환경 구축 · 실행</a></li>
+        <li><a href="#s3">권한 모델</a></li>
+        <li><a href="#s4">화면별 운영자 가이드</a></li>
+        <li><a href="#s5">설계 결정</a></li>
+        <li><a href="#s6">보안 · 감사 통제</a></li>
+        <li><a href="#s7">성능 · 한계</a></li>
+        <li><a href="#s8">트러블슈팅 FAQ</a></li>
+        <li><a href="#s9">운영 도입 시 보강</a></li>
+        <li><a href="#s10">작성 정보</a></li>
+      </ol>
+    </nav>
+  </aside>
+
+  <main>
+
+    <header class="hero">
+      <div class="eyebrow"><span class="dot"></span> v1.0 · 2026.04 · Production-ready</div>
+      <h1>NOA Interface Hub</h1>
+      <p class="lede">
+        보험사가 외부 기관 · 사내 시스템과 주고받는 수십 개의 인터페이스를 한 화면에서
+        등록 · 실행 · 감시 · 분석하는 통합 관제 플랫폼.
+        AI 어시스턴트가 과거 유사 장애 사례를 찾아 원인 가설과 조치 절차를 자연어로 제안합니다.
+      </p>
+      <dl class="hero-meta">
+        <div><dt>Stack</dt><dd>Vue 3 · FastAPI · PostgreSQL · Redis</dd></div>
+        <div><dt>Protocols</dt><dd>REST · SOAP · SFTP · MQ · BATCH</dd></div>
+        <div><dt>Security</dt><dd>JWT · AES-GCM · RBAC · Audit</dd></div>
+        <div><dt>AI</dt><dd>Multi-LLM + TF-IDF Fallback</dd></div>
+      </dl>
+    </header>
+
+    <!-- ===== 1. OVERVIEW ===== -->
+    <section id="s1">
+      <div class="sec-head"><span class="sec-num">01</span><h2>시스템 개요</h2></div>
+
+      <div class="table-wrap"><table>
+        <tbody>
+          <tr><td>대상</td><td>보험사 운영팀 (외부 기관 인터페이스 담당자, 사내 시스템 운영자, 감사 담당)</td></tr>
+          <tr><td>해결</td><td>프로토콜 파편화 / 장애 원인 파악 지연 / SLA · 감사 자료 수작업 / 선제적 이상 감지 부재</td></tr>
+          <tr><td>차별점</td><td>단순 모니터링을 넘어 <strong>AI 가 과거 사례를 인용해 답변</strong>, 그리고 <strong>운영 보안 · 감사</strong>가 1급 시민</td></tr>
+        </tbody>
+      </table></div>
+
+      <p style="font-size:13.5px;color:var(--ink-3);margin-top:12px">
+        <strong style="color:var(--ink)">지원 프로토콜</strong> &nbsp;·&nbsp;
+        REST · SOAP · SFTP · MQ (Redis 시뮬) · BATCH
+      </p>
+    </section>
+
+    <!-- ===== 2. ENV ===== -->
+    <section id="s2">
+      <div class="sec-head"><span class="sec-num">02</span><h2>환경 구축 · 실행</h2></div>
+
+<pre data-lang="bash"><span class="c"># 전체 스택 기동 (PostgreSQL · Redis · SFTP · Backend · Frontend)</span>
+docker compose up -d --build
+
+<span class="c"># 데모 데이터 시드 (사용자 3명, 인터페이스 18개, 호출 로그 21,000건, 장애 6건, 60일치)</span>
+docker compose exec backend python -m app.scripts.seed_demo
+
+<span class="c"># 접속</span>
+<span class="c">#   웹:   http://localhost:5173</span>
+<span class="c">#   API:  http://localhost:8000/docs</span></pre>
+
+      <h4>기본 계정 (시드 후)</h4>
+      <div class="table-wrap"><table>
+        <thead><tr><th>계정</th><th>권한</th><th>비밀번호</th></tr></thead>
+        <tbody>
+          <tr><td><code>admin</code></td><td>모든 변경 + 보안 + 사용자 관리</td><td><code>admin1234</code></td></tr>
+          <tr><td><code>operator</code></td><td>인터페이스 실행 / 음소거 / 장애 처리</td><td><code>oper1234</code></td></tr>
+          <tr><td><code>viewer</code></td><td>읽기 전용 + 감사 로그 조회</td><td><code>view1234</code></td></tr>
+        </tbody>
+      </table></div>
+
+      <div class="callout warn">
+        <span class="ico">NOTE</span>
+        <p>첫 로그인 시 강제 비밀번호 변경 다이얼로그가 뜹니다 (운영 보안 정책).</p>
+      </div>
+    </section>
+
+    <!-- ===== 3. RBAC ===== -->
+    <section id="s3">
+      <div class="sec-head"><span class="sec-num">03</span><h2>권한 모델</h2></div>
+
+      <div class="table-wrap"><table>
+        <thead><tr><th>액션</th><th class="c">ADMIN</th><th class="c">OPERATOR</th><th class="c">VIEWER</th></tr></thead>
+        <tbody>
+          <tr><td>모든 화면 조회</td><td class="check">●</td><td class="check">●</td><td class="check">●</td></tr>
+          <tr><td>인터페이스 ▶ 수동 실행</td><td class="check">●</td><td class="check">●</td><td class="x">—</td></tr>
+          <tr><td>호출 로그 재처리 (단건/일괄)</td><td class="check">●</td><td class="check">●</td><td class="x">—</td></tr>
+          <tr><td>장애 해결 처리</td><td class="check">●</td><td class="check">●</td><td class="x">—</td></tr>
+          <tr><td>인터페이스 음소거</td><td class="check">●</td><td class="check">●</td><td class="x">—</td></tr>
+          <tr><td>인터페이스 등록 · 수정 · 보관</td><td class="check">●</td><td class="x">—</td><td class="x">—</td></tr>
+          <tr><td>시크릿 평문 조회 (사유 필수)</td><td class="check">●</td><td class="x">—</td><td class="x">—</td></tr>
+          <tr><td>알림 룰 · 사용자 관리</td><td class="check">●</td><td class="x">—</td><td class="x">—</td></tr>
+          <tr><td>감사 로그 조회</td><td class="check">●</td><td class="x">—</td><td class="check">●</td></tr>
+        </tbody>
+      </table></div>
+    </section>
+
+    <!-- ===== 4. SCREENS ===== -->
+    <section id="s4">
+      <div class="sec-head"><span class="sec-num">04</span><h2>화면별 운영자 가이드</h2></div>
+
+      <div class="grid-2">
+
+        <div class="card">
+          <div class="card-head"><span class="card-num">4.1</span><div class="card-title">로그인</div></div>
+          <ul>
+            <li>5회 연속 실패 시 <strong>30분 자동 잠금</strong> (HTTP 423). ADMIN 이 사용자 관리에서 즉시 해제.</li>
+            <li>첫 로그인 · 리셋 직후엔 강제 비밀번호 변경 다이얼로그 (다른 화면 접근 차단).</li>
+          </ul>
+        </div>
+
+        <div class="card">
+          <div class="card-head"><span class="card-num">4.2</span><div class="card-title">대시보드</div></div>
+          <p class="card-intent"><strong>의도</strong> — 지금 시스템 전체 상태를 한 눈에. 새 장애 즉시 인지.</p>
+          <h4>기능</h4>
+          <ul>
+            <li>24시간 KPI 4종: 총 호출 / 성공률 / 평균 응답 / 실시간 장애 카운트</li>
+            <li>최근 6시간 호출량 · 응답시간 시계열 (분 단위)</li>
+            <li>실시간 호출 라이브 피드 (WebSocket)</li>
+            <li><strong>시간대 × 인터페이스 히트맵</strong> (호출량 / 실패율 토글)</li>
+          </ul>
+          <h4>사용 팁</h4>
+          <ul>
+            <li>히트맵 범례 칩 클릭 → 해당 구간만 강조, 나머지 dim.</li>
+            <li>우상단 종 숫자 = 미해결 장애. 클릭하면 장애 페이지 미해결만 모드 진입.</li>
+          </ul>
+        </div>
+
+        <div class="card">
+          <div class="card-head"><span class="card-num">4.3</span><div class="card-title">토폴로지</div></div>
+          <p class="card-intent"><strong>의도</strong> — 시스템 구조 조망. "어느 사내 모듈이 어떤 외부 기관에 의존하는가".</p>
+          <h4>기능</h4>
+          <ul>
+            <li>좌측 <strong>사내 핵심</strong> (보험금계산, CB평가)</li>
+            <li>우측 상 <strong>외부 제휴사</strong> (PG, 메시징, 마이데이터)</li>
+            <li>우측 하 <strong>규제기관</strong> (금감원, 신용정보원, 국세청, 보험개발원)</li>
+            <li>카드 색 = 최근 N일 헬스 (정상/주의/장애/데이터 없음)</li>
+            <li>1일 / 7일 / 30일 윈도우 토글, 카드 클릭 → 인터페이스 페이지 드릴다운</li>
+          </ul>
+        </div>
+
+        <div class="card">
+          <div class="card-head"><span class="card-num">4.4</span><div class="card-title">인터페이스 관리</div></div>
+          <p class="card-intent"><strong>의도</strong> — 모든 외부 · 내부 연동의 마스터 데이터 통합 관리.</p>
+          <h4>기능</h4>
+          <ul>
+            <li>분류 · 프로토콜 · 기관 다중 필터, 활성/휴지통 토글</li>
+            <li>행마다: 분류 · 방향(IN/OUT) · 프로토콜 · 스케줄 · 상태 · 인증키 D-N · 재시도 횟수 칩</li>
+            <li>액션: 시크릿 조회 (ADMIN, 사유 필수), ▶ 실행, 🔕 음소거, 수정, 보관 처리</li>
+          </ul>
+          <h4>등록 폼 핵심</h4>
+          <ul>
+            <li><strong>분류</strong>(사내/제휴/규제) · <strong>방향</strong>(OUT/IN) · cron 미리보기 (다음 N회 실행 시각)</li>
+            <li>호출 안정성 — timeout · 재시도 횟수 · backoff 초 (REST/SOAP 만, 401·422 즉시 종료)</li>
+            <li>인증 키 만료일 (D-7 이내 자동 알림)</li>
+          </ul>
+        </div>
+
+        <div class="card">
+          <div class="card-head"><span class="card-num">4.5</span><div class="card-title">호출 로그 · 재처리</div></div>
+          <p class="card-intent"><strong>의도</strong> — 모든 호출의 흔적을 검색 · 재처리 · 드릴다운.</p>
+          <ul>
+            <li>1차 필터: 인터페이스 · 상태 · 프로토콜 · 키워드 · 실패만</li>
+            <li>2차 필터: <strong>시간 구간</strong> (1h/6h/24h/7d 빠른 선택), 숫자만 입력해도 자동 <code>YYYY-MM-DD HH:mm</code> 마스킹</li>
+            <li>상세: Request/Response JSON · stacktrace · 재처리 체인 보기</li>
+            <li>재처리된 호출은 ↻ 자동 제거, 일괄 재처리는 체크박스 선택 → 안전 가드</li>
+          </ul>
+        </div>
+
+        <div class="card">
+          <div class="card-head"><span class="card-num">4.6</span><div class="card-title">장애 (Incidents)</div></div>
+          <p class="card-intent"><strong>의도</strong> — 같은 원인 반복 실패는 묶어 알림 폭주 차단.</p>
+          <ul>
+            <li>severity 칩 (참고/주의/긴급), 발생 기간 컬럼, "진행중" 라벨</li>
+            <li>"관련 호출" 칩 → 묶인 호출 다이얼로그</li>
+            <li>재처리 옵션: <strong>최신 1건만</strong>(기본 안전) / <strong>전체 N건</strong>(confirm)</li>
+            <li>같은 (interface, type) 조합은 미해결 1건만 유지 → 100회 실패해도 알림 1번</li>
+          </ul>
+        </div>
+
+        <div class="card">
+          <div class="card-head"><span class="card-num">4.7</span><div class="card-title">성능 관리</div></div>
+          <p class="card-intent"><strong>의도</strong> — 백분위 · 처리량 · 느린 Top-N 으로 SLA 위반 사전 포착.</p>
+          <ul>
+            <li>처리량 (TPS) · p95 응답시간 24h 시계열, 느린 호출 Top 10</li>
+            <li>인터페이스별 <strong>p50 / p95 / p99 / max</strong> + 처리량 + 실패율</li>
+            <li>p95 가 SLA 기준. 떨어지면 인터페이스별 정렬로 원인 분석 시작.</li>
+          </ul>
+        </div>
+
+        <div class="card">
+          <div class="card-head"><span class="card-num">4.8</span><div class="card-title">SLA 리포트</div></div>
+          <p class="card-intent"><strong>의도</strong> — 월/분기 SLA 성과 시각화 + 감독당국 보고 자료 생성.</p>
+          <ul>
+            <li>KPI 4종: 인터페이스 수, 평균 가동률, 가동률/응답 목표 달성률</li>
+            <li><strong>일별 SLA 충족 캘린더</strong> (달성/부분/미달/데이터없음 + 범례 필터)</li>
+            <li>인터페이스별 누적 표 + 월/분기 추이 차트 (6개월 이상 보장)</li>
+            <li><strong>Excel 내보내기</strong> + <strong>프린트/PDF</strong> (A4 가로 최적화)</li>
+          </ul>
+        </div>
+
+        <div class="card">
+          <div class="card-head"><span class="card-num">4.9</span><div class="card-title">AI 분석 어시스턴트</div></div>
+          <p class="card-intent"><strong>의도</strong> — "지금 무슨 일이?" / "과거에 본 적 있나?" 자연어로 질의.</p>
+          <ul>
+            <li>진행 단계별 메시지 회전 (질문 의도 → 유사 사례 → 컨텍스트 전달)</li>
+            <li>답변 markdown 렌더 + incident 링크 자동 드릴다운</li>
+            <li>추천 프롬프트 순위: <strong>현재 장애 &gt; 자주 묻는 질문 &gt; 템플릿</strong></li>
+            <li>칩 메타: intent · mode(LLM/fallback) · provider · ⚡cached · repeated · fallback 체인</li>
+            <li>LLM 미설정 시 TF-IDF fallback — 검색은 항상 동작</li>
+          </ul>
+        </div>
+
+        <div class="card">
+          <div class="card-head"><span class="card-num">4.10</span><div class="card-title">자동 복구 분석</div></div>
+          <p class="card-intent"><strong>의도</strong> — 재시도 정책이 실제 SLA 를 개선하는지 정량 측정.</p>
+          <ul>
+            <li>KPI 4종: 총 호출 / 재시도 발생 / 복구 / 최종 실패</li>
+            <li>"재시도 도입 효과" 배너 — "최근 N일간 X건 자동 복구"</li>
+            <li>인터페이스별 표 + <strong>복구율 progress bar</strong> (60%↑ 효과 / 30%↑ 보통 / 미만 재검토)</li>
+            <li>SFTP/MQ/BATCH 는 멱등성 문제로 자동 재시도 미적용 ("정책 없음")</li>
+          </ul>
+        </div>
+
+        <div class="card">
+          <div class="card-head"><span class="card-num">4.11</span><div class="card-title">알림 룰 <span style="font-family:var(--mono);font-size:10px;color:var(--ink-4);font-weight:400">ADMIN</span></div></div>
+          <p class="card-intent"><strong>의도</strong> — 전사 공통 알림 정책. 인터페이스 설정 위에 한 번 더 필터링.</p>
+          <ul>
+            <li>심각도별 채널 (참고/주의/긴급) — 인앱 · Slack · 이메일</li>
+            <li>야간/주말 끄기 + <strong>긴급 예외</strong> 옵션</li>
+            <li>"미리 보기" 표 — 지금 시각 기준 실제 발송 채널 시뮬</li>
+            <li>인터페이스 음소거 ∩ 전역 룰 = 실제 발송</li>
+          </ul>
+        </div>
+
+        <div class="card">
+          <div class="card-head"><span class="card-num">4.12</span><div class="card-title">감사 로그 <span style="font-family:var(--mono);font-size:10px;color:var(--ink-4);font-weight:400">ADMIN/VIEWER</span></div></div>
+          <p class="card-intent"><strong>의도</strong> — 누가 · 언제 · 무엇을 · 어디서 영구 기록 (금감원 감사 대응).</p>
+          <ul>
+            <li>사용자 · 액션 · 자원종류 · 기간 필터, 변경 전/후 JSON 비교</li>
+            <li>Excel 내보내기, <strong>append-only</strong> (수정/삭제 불가)</li>
+            <li>인터페이스/장애/사용자/로그인/비밀번호/알림룰 모든 변경 기록</li>
+          </ul>
+        </div>
+
+        <div class="card">
+          <div class="card-head"><span class="card-num">4.13</span><div class="card-title">사용자 관리 <span style="font-family:var(--mono);font-size:10px;color:var(--ink-4);font-weight:400">ADMIN</span></div></div>
+          <p class="card-intent"><strong>의도</strong> — 계정 라이프사이클 + 보안 사고 대응 (퇴사 · 탈취).</p>
+          <ul>
+            <li>신규 생성 + 임시 비번 → 첫 로그인 강제 변경</li>
+            <li>🔓 잠금 해제, 🚪 강제 로그아웃 (모든 세션 즉시 종료)</li>
+            <li>강제 로그아웃은 <strong>session_version 카운터</strong> 방식 — JWT stateless 인데도 즉시 무효</li>
+          </ul>
+        </div>
+
+      </div>
+    </section>
+
+    <!-- ===== 5. DESIGN DECISIONS ===== -->
+    <section id="s5">
+      <div class="sec-head"><span class="sec-num">05</span><h2>설계 결정 — 왜 이렇게 만들었나</h2></div>
+
+      <div class="decision">
+        <h3><span class="num">5.1</span>LangChain · FAISS 대신 멀티 LLM + TF-IDF</h3>
+        <p>초기 기획은 LangChain · FAISS · OpenAI Embedding 이었지만 실제로는 <strong>httpx 직접 호출 + scikit-learn TF-IDF</strong> 로 갔습니다.</p>
+        <ul>
+          <li><strong>단일 프로바이더 종속 회피</strong> — 멀티 프로바이더 + 자동 fallback 으로 한 곳 실패 시 다음으로 전환</li>
+          <li><strong>임베딩 비용 · 복잡도</strong> — 데모 규모(과거 incident 수십 건)엔 TF-IDF 로 충분, 메모리만 사용</li>
+          <li><strong>환각 방지</strong> — 의도 분류(stats/case/config/general)로 stats 질문은 실시간 DB 표, case 는 RAG, config 는 메타 표만 — system prompt 로 "데이터에 없는 일반론" 추가 금지</li>
+        </ul>
+      </div>
+
+      <div class="decision">
+        <h3><span class="num">5.2</span>incident dedup — 알림 폭주 방지</h3>
+        <p>같은 (interface, type) 조합 미해결 incident 는 1건만. KIDI 가 100번 연속 실패해도 운영자에게 incident 1건 + 알림 1번. 실제 실패 호출 100건은 call_logs 에 그대로 남아 드릴다운 가능.</p>
+        <p>PagerDuty / Opsgenie / Datadog 의 alert grouping 과 같은 패턴. 야간 · 휴일 호출 폭주 방지가 핵심.</p>
+      </div>
+
+      <div class="decision">
+        <h3><span class="num">5.3</span>자동 재시도 — REST/SOAP 만 적용</h3>
+        <p>SFTP/MQ/BATCH 는 멱등성 보장이 어려움 (PUT 두 번이면 파일 두 개, MQ 는 메시지 두 번 소비). 네트워크 일시 장애 흡수 가치보다 중복 처리 위험이 큼.</p>
+        <p>REST/SOAP 도 <strong>401 · 422 는 재시도 제외</strong> — 키 무효 / 페이로드 형식 오류는 재시도해도 같은 결과.</p>
+      </div>
+
+      <div class="decision">
+        <h3><span class="num">5.4</span>음소거 vs 알림 차단의 분리</h3>
+        <p>"음소거" 한 인터페이스라도 incident 자체는 정상 생성. 대시보드 카운트도 갱신. <strong>WS broadcast 는 항상</strong>, 다만 <strong>toast/Slack/Email 만 skip</strong>.</p>
+        <p>기록은 살아있고 알람만 끔 — 정기 점검 시간에도 사고 발생 가능성을 잃지 않음.</p>
+      </div>
+
+      <div class="decision">
+        <h3><span class="num">5.5</span>keep-alive 페이지 캐시</h3>
+        <p>모든 페이지를 컴포넌트 인스턴스 캐시 — 다른 페이지 갔다 돌아와도 필터 · 검색 · 답변 · 스크롤 유지. 로그아웃 시 자동 리셋. WebSocket 라이브 데이터는 keep-alive 와 무관하게 항상 push.</p>
+      </div>
+
+      <div class="decision">
+        <h3><span class="num">5.6</span>시크릿 평문 노출의 통제된 경로</h3>
+        <p>저장은 AES-GCM 암호화. 평문 조회는 <strong>ADMIN + 사유 필수 + 감사 로그 기록 + 1회만 노출</strong> (다이얼로그 닫으면 메모리에서도 사라짐).</p>
+        <p>목적은 키 만료 트러블슈팅 / 담당자 인계 / 외부 도구 재현 — 무분별한 노출은 막되 정당한 사유 시 추적 가능한 형태로.</p>
+      </div>
+    </section>
+
+    <!-- ===== 6. SECURITY ===== -->
+    <section id="s6">
+      <div class="sec-head"><span class="sec-num">06</span><h2>보안 · 감사 통제</h2></div>
+
+      <div class="table-wrap"><table>
+        <thead><tr><th>위협</th><th>통제</th></tr></thead>
+        <tbody>
+          <tr><td>무차별 로그인</td><td>5회 실패 자동 잠금 (30분) + ADMIN 즉시 해제</td></tr>
+          <tr><td>약한 비밀번호</td><td>8자 이상 + 영문 · 숫자 · 특수문자 3종 조합 강제</td></tr>
+          <tr><td>신규 계정 비번 노출</td><td>임시 비번 발급 + 첫 로그인 강제 변경 (다른 화면 차단)</td></tr>
+          <tr><td>토큰 탈취 / 퇴사</td><td>강제 로그아웃 (session_version) — 모든 세션 즉시 무효</td></tr>
+          <tr><td>인증정보 평문 노출</td><td>AES-GCM 저장, 조회는 ADMIN + 사유 + 1회 + 감사</td></tr>
+          <tr><td>인증 키 만료 미인지</td><td>D-7 임박 자동 incident + 알림 발송</td></tr>
+          <tr><td>변경 책임 추적 불가</td><td>모든 변경 audit_logs append-only 기록</td></tr>
+          <tr><td>무한 재처리 → 외부 중복</td><td>재처리된 호출 ↻ 자동 제거, 일괄은 "최신 1건만" 안전 기본</td></tr>
+          <tr><td>야간 알림 폭주</td><td>dedup + 인터페이스 음소거 + 전역 야간 silence</td></tr>
+        </tbody>
+      </table></div>
+    </section>
+
+    <!-- ===== 7. PERFORMANCE ===== -->
+    <section id="s7">
+      <div class="sec-head"><span class="sec-num">07</span><h2>성능 · 한계</h2></div>
+
+      <h4>현재 데모 규모</h4>
+      <ul>
+        <li>인터페이스 18개, 60일 호출 로그 21,000건</li>
+        <li>p95 응답시간 100~500ms (외부 호출 제외, 내부 API 기준)</li>
+        <li>AI 분석: 캐시 hit 즉시, miss 시 LLM 호출 3~10초</li>
+        <li>WebSocket 라이브: ms 단위 push</li>
+      </ul>
+
+      <h4>스케일 한계</h4>
+      <ul>
+        <li>DB 마이그레이션은 데모 한정 인라인 (<code>ADD COLUMN IF NOT EXISTS</code>). 실 운영엔 <strong>Alembic</strong> 필요.</li>
+        <li>호출 로그 수백만 건 누적 시 인덱스 추가 (interface_id × called_at 복합) + 파티셔닝 검토.</li>
+        <li>AI 분석 캐시는 단일 Redis. 다중 백엔드 인스턴스 시 그대로 동작 (Redis 공유).</li>
+        <li>WebSocket 은 단일 프로세스 메모리 connection 보관. 멀티 프로세스 시 Redis pub/sub 또는 외부 메시지 브로커 필요.</li>
+      </ul>
+    </section>
+
+    <!-- ===== 8. FAQ ===== -->
+    <section id="s8">
+      <div class="sec-head"><span class="sec-num">08</span><h2>트러블슈팅 FAQ</h2></div>
+
+      <div class="faq">
+        <div class="faq-item">
+          <div class="faq-q"><span class="q-mark">Q1</span><span><code>docker compose up</code> 후 백엔드가 401 만 반환</span></div>
+          <div class="faq-a">DB 연결 실패 가능성. <code>docker compose logs backend</code> 에서 PostgreSQL 연결 에러 확인. 컨테이너 재기동 또는 <code>docker compose down -v &amp;&amp; docker compose up -d</code> 로 볼륨 초기화.</div>
+        </div>
+        <div class="faq-item">
+          <div class="faq-q"><span class="q-mark">Q2</span><span>AI 분석이 항상 "Fallback (TF-IDF)" 모드</span></div>
+          <div class="faq-a">LLM 프로바이더 키 미설정 시 정상. <code>backend/.env</code> 의 <code>AI_PROVIDER</code> 를 <code>mistral</code>/<code>anthropic</code>/<code>openai</code>/<code>huggingface</code> 중 하나로 + 해당 키 + 재기동.</div>
+        </div>
+        <div class="faq-item">
+          <div class="faq-q"><span class="q-mark">Q3</span><span>AI 호출이 매번 90초 타임아웃</span></div>
+          <div class="faq-a">외부망 차단 또는 LLM 측 지연. <code>AI_FALLBACK_CHAIN</code> 으로 다른 프로바이더 자동 전환, TF-IDF 로 떨어져도 과거 사례 검색은 동작.</div>
+        </div>
+        <div class="faq-item">
+          <div class="faq-q"><span class="q-mark">Q4</span><span>호출 로그가 비어있음</span></div>
+          <div class="faq-a">데모 시드 미실행. <code>docker compose exec backend python -m app.scripts.seed_demo</code>.</div>
+        </div>
+        <div class="faq-item">
+          <div class="faq-q"><span class="q-mark">Q5</span><span>대시보드 좌상단이 OFFLINE</span></div>
+          <div class="faq-a">WebSocket 연결 실패. 하드 리로드 (Ctrl+Shift+R) + 백엔드 컨테이너 상태 확인.</div>
+        </div>
+        <div class="faq-item">
+          <div class="faq-q"><span class="q-mark">Q6</span><span>"column does not exist" 에러</span></div>
+          <div class="faq-a">마이그레이션 누락. 백엔드 재기동 시 자동 적용 (<code>ADD COLUMN IF NOT EXISTS</code>).</div>
+        </div>
+        <div class="faq-item">
+          <div class="faq-q"><span class="q-mark">Q7</span><span>시각이 UTC 로 보임</span></div>
+          <div class="faq-a">컨테이너 <code>TZ=Asia/Seoul</code> + PostgreSQL 세션 timezone 확인. Docker 재시작 후 seed_demo 재실행.</div>
+        </div>
+        <div class="faq-item">
+          <div class="faq-q"><span class="q-mark">Q8</span><span>Slack / Email 알림이 안 옴</span></div>
+          <div class="faq-a"><code>SLACK_WEBHOOK_URL</code> / <code>SMTP_HOST</code> 미설정이면 자동 skip. 알림 룰의 "미리 보기" 표에서 실제 발송 채널 확인.</div>
+        </div>
+        <div class="faq-item">
+          <div class="faq-q"><span class="q-mark">Q9</span><span>"INBOUND 인터페이스는 실행할 수 없습니다"</span></div>
+          <div class="faq-a">정상 동작. INBOUND 는 외부가 우리 webhook 을 호출하는 구조라 능동 실행 불가. 외부에서 <code>/api/call-logs/ingest</code> 로 결과 push.</div>
+        </div>
+        <div class="faq-item">
+          <div class="faq-q"><span class="q-mark">Q10</span><span>▶ 실행했는데 우상단 toast 가 안 뜸</span></div>
+          <div class="faq-a">같은 (인터페이스, 오류 유형) 조합 미해결 incident 가 이미 있으면 alarm fatigue 방지로 dedup 됩니다. 페이지 내 빨간 snackbar + "장애 보기" 는 항상 뜨므로 그쪽으로 진입.</div>
+        </div>
+      </div>
+    </section>
+
+    <!-- ===== 9. PROD READINESS ===== -->
+    <section id="s9">
+      <div class="sec-head"><span class="sec-num">09</span><h2>운영 도입 시 보강 포인트</h2></div>
+
+      <p style="font-size:13.5px;color:var(--ink-3)">현재는 데모/검증 수준. 실 운영 배포 전 다음을 교체 · 추가해야 합니다.</p>
+
+      <div class="table-wrap"><table>
+        <thead><tr><th>항목</th><th>현재</th><th>운영 시</th></tr></thead>
+        <tbody>
+          <tr><td>DB 마이그레이션</td><td>인라인 <code>ADD COLUMN IF NOT EXISTS</code></td><td><strong>Alembic</strong> 으로 버전 관리</td></tr>
+          <tr><td>SMTP</td><td>데모 시 미설정 가능</td><td>사내 SMTP 또는 SendGrid 같은 ESP</td></tr>
+          <tr><td>Slack</td><td>단일 webhook</td><td>채널별 라우팅 (severity 별 별도)</td></tr>
+          <tr><td>비밀번호 정책</td><td>8자 + 3종 조합</td><td>만료 주기, 이전 N개 재사용 금지, MFA</td></tr>
+          <tr><td>JWT 시크릿</td><td><code>.env</code> 평문</td><td>Vault / AWS Secrets Manager</td></tr>
+          <tr><td>AES-GCM 키</td><td><code>.env</code> 의 <code>SECRET_KEY</code></td><td>KMS / HSM</td></tr>
+          <tr><td>모니터링</td><td>자체 대시보드</td><td>Prometheus + Grafana 별도 배포</td></tr>
+          <tr><td>로그 집계</td><td>DB only</td><td>ELK / Loki (애플리케이션 로그)</td></tr>
+          <tr><td>배포</td><td>docker compose</td><td>Kubernetes + Helm</td></tr>
+          <tr><td>MQ</td><td>Redis LIST 시뮬</td><td>Kafka / RabbitMQ</td></tr>
+          <tr><td>AI 비용</td><td>캐시 1h + fallback 체인</td><td>호출당 비용 한도, 사용량 quota, 사용자별 rate limit</td></tr>
+        </tbody>
+      </table></div>
+    </section>
+
+    <!-- ===== 10. AUTHOR ===== -->
+    <section id="s10">
+      <div class="sec-head"><span class="sec-num">10</span><h2>작성 정보</h2></div>
+
+      <div class="table-wrap"><table>
+        <tbody>
+          <tr><td>작성자</td><td>박수산</td></tr>
+          <tr><td>연락처</td><td><a href="/cdn-cgi/l/email-protection#95f3f4e6fae6f4fbd5f2f8f4fcf9bbf6faf8"><span class="__cf_email__" data-cfemail="375156445844565977505a565e5b1954585a">[email&#160;protected]</span></a></td></tr>
+          <tr><td>과제</td><td>노아에이티에스(주) 공채 15기 2차 개발 기획</td></tr>
+          <tr><td>개발 방식</td><td>바이브코딩 (AI 활용 빠른 반복) + Docker 컨테이너 배포</td></tr>
+        </tbody>
+      </table></div>
+    </section>
+
+    <footer class="doc-foot">
+      <div class="col">
+        <strong>NOA Interface Hub</strong>
+        보험사 인터페이스 통합 관제 플랫폼
+      </div>
+      <div class="col">
+        <strong>Document</strong>
+        DEVELOPMENT.md · v1.0 · 2026.04
+      </div>
+      <div class="col">
+        <strong>Contact</strong>
+        <a href="/cdn-cgi/l/email-protection" class="__cf_email__" data-cfemail="573136243824363917303a363e3b7934383a">[email&#160;protected]</a>
+      </div>
+    </footer>
+
+  </main>
+
+</div>
+
+<script data-cfasync="false" src="/cdn-cgi/scripts/5c5dd728/cloudflare-static/email-decode.min.js"></script><script>
+  // Keyboard shortcut: Cmd/Ctrl + P already triggers print natively,
+  // but we add a visible hint via the button. Nothing else needed.
+</script>
+
+</body>
+</html>

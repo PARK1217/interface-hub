@@ -135,17 +135,22 @@ const chartSeries = computed(() => [
   { name: '평균 응답(ms)', type: 'line', data: series.value.map((p) => [new Date(p.bucket).getTime(), Math.round(p.avg_duration_ms)]) },
 ]);
 
-const chartOpts = {
-  chart: { id: 'live-chart', toolbar: { show: false } },
-  stroke: { width: [0, 3] },
-  dataLabels: { enabled: false },
-  xaxis: { type: 'datetime' },
-  yaxis: [
-    { title: { text: '호출 수' } },
-    { opposite: true, title: { text: 'ms' } },
-  ],
-  colors: ['#1F3A93', '#F6A623'],
-};
+// Y축 최소 눈금 — 호출 수가 작을 때(예: 전부 1) 막대가 100% 로 차서 시각화 의미가 사라지는 것 방지.
+// 실제 max 가 5 미만이면 5 를 상한으로 강제해 "아 호출이 적구나" 여백 시각화.
+const chartOpts = computed(() => {
+  const maxCount = Math.max(1, ...series.value.map((p) => p.total));
+  return {
+    chart: { id: 'live-chart', toolbar: { show: false } },
+    stroke: { width: [0, 3] },
+    dataLabels: { enabled: false },
+    xaxis: { type: 'datetime' },
+    yaxis: [
+      { title: { text: '호출 수' }, min: 0, max: Math.max(5, maxCount), forceNiceScale: true },
+      { opposite: true, title: { text: 'ms' }, min: 0 },
+    ],
+    colors: ['#1F3A93', '#F6A623'],
+  };
+});
 
 const heatMode = ref<'count' | 'failure'>('count');
 const heatRows = ref<HeatmapRow[]>([]);

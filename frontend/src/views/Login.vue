@@ -13,6 +13,42 @@
           <v-divider />
 
           <v-card-text class="pa-4">
+            <!-- 문서 링크 — 평가관이 로그인 전에 먼저 확인할 수 있게 최상단 배치 -->
+            <div class="doc-links mb-4">
+              <div class="text-subtitle-2 mb-2 d-flex align-center">
+                <v-icon icon="mdi-book-open-page-variant-outline" size="small" color="primary" class="mr-1" />
+                평가관 안내 — 먼저 문서를 확인해주세요
+              </div>
+              <div class="d-flex" style="gap: 10px">
+                <v-btn
+                  color="primary"
+                  variant="flat"
+                  size="large"
+                  prepend-icon="mdi-file-pdf-box"
+                  :href="proposalHref"
+                  target="_blank"
+                  rel="noopener"
+                  style="flex: 1"
+                >
+                  기획서 (PDF)
+                </v-btn>
+                <v-btn
+                  color="info"
+                  variant="flat"
+                  size="large"
+                  prepend-icon="mdi-file-document-outline"
+                  :href="developmentHref"
+                  target="_blank"
+                  rel="noopener"
+                  style="flex: 1"
+                >
+                  개발 문서 (HTML)
+                </v-btn>
+              </div>
+            </div>
+
+            <v-divider class="mb-4" />
+
             <v-alert
               v-if="reason === 'expired'"
               type="warning"
@@ -107,6 +143,7 @@
                 </div>
               </div>
             </div>
+
           </v-card-text>
         </v-card>
       </div>
@@ -130,6 +167,11 @@ const submitting = ref(false);
 const errMsg = ref('');
 
 const reason = computed(() => route.query.reason as string | undefined);
+
+// 문서 링크 — 백엔드 정적 서빙 (/api/docs-file/...). 파일명 공백·특수문자는 encodeURI 로 처리.
+// file/ 폴더 안에서 실제 파일명이 바뀌면 아래 상수만 교체.
+const proposalHref = `/api/docs-file/${encodeURIComponent('NOA_Interface_Hub_기획서.pdf')}`;
+const developmentHref = `/api/docs-file/${encodeURIComponent('NOA Interface Hub - _.html')}`;
 
 // 입력란 placeholder — 평가관에게 아래 데모 카드 클릭 안내
 const hintUsername = '아래 데모 계정 카드를 클릭하세요 ↓';
@@ -201,6 +243,13 @@ async function onSubmit() {
 }
 .login-card {
   border-radius: 12px;
+}
+/* 문서 링크 박스 — 평가관 첫 시선에 강조 */
+.doc-links {
+  padding: 12px 14px;
+  background: rgba(25, 118, 210, 0.06);
+  border: 1px solid rgba(25, 118, 210, 0.2);
+  border-radius: 8px;
 }
 
 .demo-grid {

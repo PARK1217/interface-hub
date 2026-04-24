@@ -3,8 +3,11 @@ from __future__ import annotations
 import logging
 from contextlib import asynccontextmanager
 
+import os
+
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.staticfiles import StaticFiles
 
 from app.api.routes import (
     ai,
@@ -68,6 +71,15 @@ app.include_router(audit_logs.router, prefix="/api")
 app.include_router(alert_rules.router, prefix="/api")
 app.include_router(ai.router, prefix="/api")
 app.include_router(monitoring.router)  # /ws/...
+
+# 문서 (개발/기획) 정적 서빙 — 로그인 페이지에서 링크로 노출.
+# docker-compose 볼륨 `./file:/docs:ro` 로 마운트. 컨테이너 밖에서 실행 시
+# 리포 루트의 file/ 폴더를 사용.
+_DOCS_DIR = "/docs" if os.path.isdir("/docs") else os.path.abspath(
+    os.path.join(os.path.dirname(__file__), "..", "..", "file")
+)
+if os.path.isdir(_DOCS_DIR):
+    app.mount("/api/docs-file", StaticFiles(directory=_DOCS_DIR), name="docs-file")
 
 
 @app.get("/health", tags=["meta"])
