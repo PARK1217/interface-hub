@@ -18,9 +18,7 @@ def DbSession() -> Generator[Session, None, None]:  # noqa: N802 — FastAPI Dep
 def _user_from_authorization(
     authorization: str | None, db: Session
 ) -> User | None:
-    """Authorization: Bearer <jwt> 헤더에서 User 객체 복원. 실패 시 None.
-
-    Phase B.6: payload.sv != user.session_version 이면 무효 토큰 (강제 로그아웃
+    """Authorization: Bearer <jwt> 헤더에서 User 객체 복원. 실패 시 None.: payload.sv != user.session_version 이면 무효 토큰 (강제 로그아웃
     / 비밀번호 변경 후 카운터 +1 → 기존 토큰 자동 무효화).
     """
     if not authorization or not authorization.lower().startswith("bearer "):

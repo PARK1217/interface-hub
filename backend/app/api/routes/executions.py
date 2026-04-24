@@ -5,6 +5,7 @@ from sqlalchemy.orm import Session
 
 from app.api.deps import get_db, require_role
 from app.models import Interface, User, UserRole
+from app.models.interface import InterfaceDirection
 from app.schemas.call_log import CallLogOut
 from app.services.audit import record_audit
 from app.services.executor import execute_interface
@@ -26,6 +27,14 @@ async def execute_now(
         raise HTTPException(status.HTTP_404_NOT_FOUND, "interface not found")
     if obj.deleted_at is not None:
         raise HTTPException(status.HTTP_400_BAD_REQUEST, "interface is deleted — restore first")
+    # INBOUND 인터페이스는 외부가 우리를 부르는 구조라 능동 실행 불가.
+    # ingest API (/api/call-logs/ingest) 로 결과만 적재 가능.
+    if obj.direction == InterfaceDirection.INBOUND:
+        raise HTTPException(
+            status.HTTP_400_BAD_REQUEST,
+            "INBOUND 인터페이스는 능동 실행할 수 없습니다. 외부 호출이 들어오면 "
+            "/api/call-logs/ingest 로 결과를 적재하세요.",
+        )
     log = await execute_interface(obj, db, triggered_by="manual", actor=actor)
     record_audit(
         db, actor=actor, action="interface.execute",

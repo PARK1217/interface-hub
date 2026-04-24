@@ -1,5 +1,4 @@
 """AI 분석 실패 사유 표시 검증.
-
 시나리오:
   1) 정상 LLM 호출 — mode=llm, llm_error=None
   2) 잘못된 API 키 (런타임 monkey-patch) — mode=fallback, llm_error.kind='http_error', status=401

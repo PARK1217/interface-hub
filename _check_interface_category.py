@@ -1,5 +1,4 @@
-"""Phase B.12 — 인터페이스 카테고리 (내부/외부 분류) 검증.
-
+"""인터페이스 카테고리 (내부/외부 분류) 검증.
 기획서 1번 항목 ("내부 핵심 시스템과 외부 기관 간 다수의 인터페이스를 단일 화면에서
 제어") 의 시스템적 표현이 동작하는지:
 
@@ -60,11 +59,11 @@ def main() -> int:
             failures.append("AI 통계 컨텍스트에 '분류별 호출/실패율' 섹션 누락")
 
     if failures:
-        print("[FAIL] Phase B.12 카테고리 검증 실패:")
+        print("[FAIL] 카테고리 검증 실패:")
         for f in failures:
             print("  -", f)
         return 1
-    print("[OK] Phase B.12 인터페이스 카테고리 — 모든 시나리오 통과")
+    print("[OK] 인터페이스 카테고리 — 모든 시나리오 통과")
     print("  * enum 3종 / 컬럼 NOT NULL / 필터 동작 / AI 컨텍스트 섹션")
     return 0
 

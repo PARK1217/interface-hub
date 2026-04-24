@@ -37,6 +37,7 @@ api.interceptors.response.use(
 
 export type AlertChannel = 'in_app' | 'slack' | 'email';
 export type InterfaceCategory = 'INTERNAL_CORE' | 'EXTERNAL_PARTNER' | 'EXTERNAL_REGULATOR';
+export type InterfaceDirection = 'OUTBOUND' | 'INBOUND';
 
 export interface InterfaceItem {
   id: number;
@@ -44,6 +45,7 @@ export interface InterfaceItem {
   description?: string | null;
   organization?: string | null;
   category?: InterfaceCategory;
+  direction?: InterfaceDirection;
   protocol: 'REST' | 'SOAP' | 'FTP' | 'MQ' | 'BATCH';
   endpoint: string;
   method: string;
@@ -57,7 +59,7 @@ export interface InterfaceItem {
   failure_rate_threshold?: number | null;
   muted_until?: string | null;
   alert_channels?: AlertChannel[] | null;
-  // Phase B.9 호출 안정성
+  // 호출 안정성
   timeout_seconds?: number | null;
   retry_max?: number;
   retry_backoff_seconds?: number;
@@ -82,7 +84,7 @@ export interface CallLogItem {
   parent_log_id?: number | null;
   retry_count?: number;
   is_reprocessed?: boolean;
-  attempt_count?: number;  // Phase B.9 — 자동 재시도 시도 횟수 (1=재시도 없음)
+  attempt_count?: number;  // 자동 재시도 시도 횟수 (1=재시도 없음)
 }
 
 export interface BulkRetryRequest {
@@ -297,12 +299,43 @@ export interface ThroughputPoint {
   p95_ms: number;
 }
 
+export interface RetryEffectRow {
+  interface_id: number;
+  interface_name: string;
+  organization: string | null;
+  retry_max: number;
+  retry_backoff_seconds: number;
+  timeout_seconds: number | null;
+  total_calls: number;
+  single_attempt_calls: number;
+  multi_attempt_calls: number;
+  recovered_calls: number;
+  failed_after_retry: number;
+  avg_attempts: number;
+  deleted_at?: string | null;
+}
+
+export interface RetryEffectSummary {
+  days: number;
+  total_calls: number;
+  multi_attempt_calls: number;
+  recovered_calls: number;
+  failed_after_retry: number;
+  recovery_rate: number;
+  interfaces_with_retry: number;
+  interfaces_total: number;
+}
+
 export const Performance = {
   percentiles: (days = 7) => api.get<PercentileRow[]>('/performance/percentiles', { params: { days } }),
   slowTop: (limit = 10, days = 7) =>
     api.get<SlowCallRow[]>('/performance/slow-top', { params: { limit, days } }),
   throughput: (bucket_minutes = 15, hours = 24) =>
     api.get<ThroughputPoint[]>('/performance/throughput', { params: { bucket_minutes, hours } }),
+  retryEffects: (days = 7, only_with_policy = false) =>
+    api.get<RetryEffectRow[]>('/performance/retry-effects', { params: { days, only_with_policy } }),
+  retryEffectsSummary: (days = 7) =>
+    api.get<RetryEffectSummary>('/performance/retry-effects/summary', { params: { days } }),
 };
 
 export interface UserItem {

@@ -35,7 +35,7 @@ export const useAuthStore = defineStore('auth', {
     isAdmin: (s) => s.user?.role === 'ADMIN',
     isOperator: (s) => s.user?.role === 'OPERATOR' || s.user?.role === 'ADMIN',
     canMutate: (s) => s.user?.role === 'OPERATOR' || s.user?.role === 'ADMIN',
-    // Phase B.4 — 강제 비밀번호 변경 필요 여부
+    // 강제 비밀번호 변경 필요 여부
     mustChangePassword: (s) => !!s.user?.must_change_password,
   },
 
@@ -75,13 +75,13 @@ export const useAuthStore = defineStore('auth', {
       }
     },
 
-    // Phase B.3/B.4 — 비밀번호 변경 후 must_change_password 등 사용자 상태 동기화
+    ///B.4 — 비밀번호 변경 후 must_change_password 등 사용자 상태 동기화
     setUser(u: AuthUser) {
       this.user = u;
       localStorage.setItem('noahub_user', JSON.stringify(u));
     },
 
-    // Phase B.6 — 비밀번호 변경 응답에 포함된 새 토큰으로 교체. 기존 토큰은
+    // 비밀번호 변경 응답에 포함된 새 토큰으로 교체. 기존 토큰은
     // 서버에서 tokens_invalid_before 갱신으로 무효화됨 → 새 토큰만 살아있음.
     setToken(token: string, expiresAt: string) {
       this.token = token;

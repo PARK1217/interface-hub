@@ -1,5 +1,4 @@
-"""AI 실패 재사용 + popular/history 필터 검증 (Phase B.8.11~B.8.14)."""
-
+"""AI 실패 재사용 + popular/history 필터 검증 (~B.8.14)."""
 from __future__ import annotations
 
 import sys
@@ -63,7 +62,7 @@ def main() -> int:
         assert b["repeated_failure"] is False
     step("no_match 첫 호출 → outcome=no_match", no_match_first_call)
 
-    # Phase B.8.15 — no_match 는 사용자 입력 결함이라 DB 기록 안 함.
+    # no_match 는 사용자 입력 결함이라 DB 기록 안 함.
     # 재호출 시에도 repeated_failure=False (매번 동일 안내, LLM 호출은 여전히 차단)
     def no_match_not_persisted():
         b = ask(tok, no_match_q)
@@ -73,7 +72,7 @@ def main() -> int:
     step("no_match 재호출 — DB 저장 없이 매번 즉시 안내", no_match_not_persisted)
 
     def no_match_not_in_history():
-        # Phase B.8.15 — 이번 세션에서 empty_question/no_match 호출 4회 했는데
+        # 이번 세션에서 empty_question/no_match 호출 4회 했는데
         # DB 에 새로 쌓이지 않았는지 확인 (qid 가 unique 하니 이번 실행 것만 필터 가능).
         # 기존 실행의 오래된 로그는 남아있어도 괜찮음 (새 정책은 신규 저장만 차단).
         r = requests.get(f"{BASE}/ai/my-history", headers=H(tok),
@@ -104,7 +103,7 @@ def main() -> int:
     step("my-history 기본 — 성공만", history_default_excludes_failures)
 
     def history_include_failed():
-        # Phase B.8.15 — empty_question/no_match 는 DB 기록 안 함. 환경 결함(llm_failed
+        # empty_question/no_match 는 DB 기록 안 함. 환경 결함(llm_failed
         # /no_history/scikit_missing) 만 include_failed 로 보임. 이번 세션에서
         # empty_question/no_match 는 생성됐지만 저장 안 됐어야 함.
         r = requests.get(f"{BASE}/ai/my-history", headers=H(tok),

@@ -1,8 +1,8 @@
-"""전역 알림 룰 (Phase B.10) — 단일 행 GET/PUT.
+"""전역 알림 룰 — 단일 행 GET/PUT.
 
 설계: 멀티 룰 (severity 별, 인터페이스 그룹별 등) 까지 가면 복잡도 폭발.
 대신 운영자 1명이 관리하는 NOA Hub 데모 컨텍스트에 맞춰 **글로벌 룰 1행 + per-interface
-오버라이드(Phase B.7)** 로 단순화. 향후 그룹 라우팅 필요해지면 여기 확장.
+오버라이드** 로 단순화. 향후 그룹 라우팅 필요해지면 여기 확장.
 """
 from __future__ import annotations
 

@@ -32,7 +32,7 @@ from app.models.interface import AuthType, ProtocolType
 log = logging.getLogger("noahub.executor")
 DEFAULT_TIMEOUT = 10.0  # seconds
 
-# Phase B.9 — 재시도 대상 status. 5xx 와 timeout/network 은 일시적이라 재시도 가치
+# 재시도 대상 status. 5xx 와 timeout/network 은 일시적이라 재시도 가치
 # 있지만 401/403/422 는 재시도해도 같은 결과 → 즉시 실패. 운영자가 SOAP/REST
 # 양쪽에 동일 정책 적용되도록 어댑터 외부에서 분류.
 _RETRYABLE_STATUSES = {CallStatus.TIMEOUT, CallStatus.SERVER_ERROR, CallStatus.FAILURE}

@@ -1,5 +1,4 @@
-"""Phase B.8.17 — LLM 프로바이더 fallback 체인 시나리오.
-
+"""LLM 프로바이더 fallback 체인 시나리오.
 시뮬:
   1) resolve_chain() 기본 순서 — settings.ai_provider 가 맨 앞
   2) AI_FALLBACK_CHAIN env 설정 시 그 순서 그대로

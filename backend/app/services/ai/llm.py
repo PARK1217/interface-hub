@@ -130,7 +130,7 @@ def _excerpt(text: str | None) -> str | None:
 
 
 def resolve_chain() -> list[str]:
-    """Phase B.8.17 — 시도할 프로바이더 순서.
+    """시도할 프로바이더 순서.
 
     1. settings.ai_fallback_chain (쉼표 구분) 이 있으면 그대로 사용.
     2. 없으면 settings.ai_provider 를 맨 앞에 두고, 키가 설정된 나머지 프로바이더를

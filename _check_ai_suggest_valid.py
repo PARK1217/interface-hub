@@ -1,5 +1,4 @@
-"""추천 prompt 가 모두 분석 가능한지 검증 (Phase B.8.16).
-
+"""추천 prompt 가 모두 분석 가능한지 검증 .
 시나리오:
   1) /ai/suggestions 호출 → limit 만큼 후보 받음
   2) 각 후보 prompt 를 /ai/ask 에 직접 돌림

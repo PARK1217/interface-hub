@@ -1,5 +1,4 @@
-"""Phase B.8 AI 캐싱 + 로깅 + popular/history/suggestions 시나리오.
-
+"""AI 캐싱 + 로깅 + popular/history/suggestions 시나리오.
 검증:
   1) 첫 질문 → cached=False, ai_query_logs 1행 추가
   2) 같은 질문 재호출 → cached=True (Redis hit), 새 ai_query_logs 행 (hit_cache=true)
@@ -39,11 +38,11 @@ def main() -> int:
             failures.append(f"{name}: {e}")
             print(f"  ✗ {name}: {e}")
 
-    print("== Phase B.8 AI 캐싱·로깅·popular·history ==")
+    print("== AI 캐싱·로깅·popular·history ==")
     tok = login()
 
     # 매 실행 새 질문 — 이전 캐시와 충돌 없도록. seed incident 와 TF-IDF 매칭이
-    # 되어야 LLM 이 호출되고 캐시됨 (Phase B.8.9 부터 no_match 면 LLM 호출 안 함).
+    # 되어야 LLM 이 호출되고 캐시됨 (부터 no_match 면 LLM 호출 안 함).
     # 그래서 seed 사례의 키워드(신용정보원, 401, CB 조회) 를 포함하면서도 다른 세션과
     # 겹치지 않게 timestamp 를 suffix 로 붙임.
     qid = int(time.time())
@@ -114,7 +113,7 @@ def main() -> int:
         for f in failures:
             print(f"   - {f}")
         return 1
-    print(f"✅ All Phase B.8 scenarios passed")
+    print(f"✅ All scenarios passed")
     return 0
 
 

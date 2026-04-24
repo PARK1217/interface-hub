@@ -26,7 +26,7 @@
     <v-app-bar elevation="1" class="no-print">
       <v-app-bar-title>{{ currentTitle }}</v-app-bar-title>
       <v-spacer />
-      <!-- Phase B.7 — 미해결 incident 카운트 뱃지. 클릭 시 incidents 페이지로. -->
+      <!-- 미해결 incident 카운트 뱃지. 클릭 시 incidents 페이지로. -->
       <v-btn
         variant="text"
         class="mr-2"
@@ -81,8 +81,7 @@
       </v-container>
     </v-main>
 
-    <!--
-      Phase B.4 강제 비밀번호 변경 모달.
+    <!-- 강제 비밀번호 변경 모달.
       auth.mustChangePassword=true 면 forced 모드로 자동 노출 + 닫기 차단.
       AppBar 메뉴의 "비밀번호 변경" 클릭 시에는 일반 모드로 노출.
     -->
@@ -92,8 +91,7 @@
       @changed="onPasswordChanged"
     />
 
-    <!--
-      Phase B.7 알림 toast — 새 incident WS 수신 시 (should_alert=true 만) 노출.
+    <!-- 알림 toast — 새 incident WS 수신 시 (should_alert=true 만) 노출.
       음소거된 인터페이스/채널은 백엔드에서 should_alert=false 로 내려옴 → 무시.
       여러 건 동시 발생 시 대기열에 쌓고 순차 표시 (Vuetify v-snackbar 단일 인스턴스 한계).
     -->
@@ -138,7 +136,7 @@ const auth = useAuthStore();
 const connected = ref(false);
 const pwDialog = ref(false);
 
-// Phase B.7 — 미해결 incident 카운트 + toast 큐 ----------------------------
+// 미해결 incident 카운트 + toast 큐 ----------------------------
 const openIncidentCount = ref(0);
 const toastShow = ref(false);
 const toastTitle = ref('');
@@ -187,7 +185,7 @@ function onToastClick() {
   router.push('/incidents');
 }
 
-// Phase B.4 — 강제 비밀번호 변경이 필요하면 다이얼로그 자동 노출.
+// 강제 비밀번호 변경이 필요하면 다이얼로그 자동 노출.
 // 로그인 직후 / 페이지 진입 시 모두 동작하도록 watch + onMounted 둘 다.
 watch(
   () => auth.mustChangePassword,
@@ -204,10 +202,12 @@ function onPasswordChanged() {
 
 const routes = [
   { path: '/dashboard', title: '대시보드', icon: 'mdi-view-dashboard' },
+  { path: '/topology', title: '토폴로지', icon: 'mdi-graph-outline' },
   { path: '/interfaces', title: '인터페이스', icon: 'mdi-api' },
   { path: '/logs', title: '호출 로그', icon: 'mdi-file-document-outline' },
   { path: '/incidents', title: '장애', icon: 'mdi-alert-circle-outline' },
   { path: '/performance', title: '성능 관리', icon: 'mdi-speedometer' },
+  { path: '/retry-analytics', title: '재시도 효과', icon: 'mdi-replay' },
   { path: '/sla', title: 'SLA', icon: 'mdi-chart-line' },
   { path: '/ai', title: 'AI 분석', icon: 'mdi-robot-outline' },
   // 감사 로그는 OPERATOR 에게는 메뉴 숨김 (감사관/관리자만)
@@ -245,7 +245,7 @@ async function onLogout() {
 onMounted(async () => {
   unsubscribeWs = subscribe((channel, data) => {
     connected.value = true;
-    // Phase B.7 — incident 이벤트는 카운트 갱신 + toast 큐잉
+    // incident 이벤트는 카운트 갱신 + toast 큐잉
     if (channel === 'incident' && data) {
       // 새 장애가 들어오면 카운트 +1 (정확도 위해 곧이어 서버 카운트 동기화도 트리거)
       openIncidentCount.value += 1;

@@ -50,6 +50,42 @@ class ThroughputPoint(BaseModel):
     p95_ms: float
 
 
+class RetryEffectRow(BaseModel):
+    """인터페이스별 자동 재시도 효과 분석.
+
+    재시도 정책 (retry_max>0) 이 실제로 의미가 있는지를 운영자가 한눈에
+    보기 위한 통계. attempt_count > 1 인 호출 중 최종 성공한 비율 = "복구율".
+    복구율이 낮으면 재시도가 무의미 → backoff 늘리거나 retry_max 줄이기 권장.
+    """
+    interface_id: int
+    interface_name: str
+    organization: str | None = None
+    retry_max: int
+    retry_backoff_seconds: float
+    timeout_seconds: float | None
+    total_calls: int
+    single_attempt_calls: int   # attempt_count == 1 (재시도 없음)
+    multi_attempt_calls: int    # attempt_count > 1 (재시도 발생)
+    recovered_calls: int        # 재시도 후 SUCCESS — 재시도 덕분에 살아난 호출
+    failed_after_retry: int     # 재시도해도 결국 실패
+    avg_attempts: float         # 호출당 평균 시도 횟수
+    deleted_at: datetime | None = None
+
+
+class RetryEffectSummary(BaseModel):
+    """전체 합산 KPI — 페이지 헤더용."""
+    days: int
+    total_calls: int
+    multi_attempt_calls: int
+    recovered_calls: int
+    failed_after_retry: int
+    # "재시도 도입 덕분에 추가 성공" — multi_attempt 중 SUCCESS 비율
+    recovery_rate: float
+    # 재시도 정책이 설정된 인터페이스 수 (retry_max > 0)
+    interfaces_with_retry: int
+    interfaces_total: int
+
+
 @router.get("/percentiles", response_model=list[PercentileRow])
 def percentiles(
     days: int = Query(7, ge=1, le=30),
@@ -143,6 +179,114 @@ def slow_top(
         )
         for r in rows
     ]
+
+
+@router.get("/retry-effects", response_model=list[RetryEffectRow])
+def retry_effects(
+    days: int = Query(7, ge=1, le=30),
+    only_with_policy: bool = Query(False, description="retry_max > 0 인 인터페이스만"),
+    db: Session = Depends(get_db),
+) -> list[RetryEffectRow]:
+    """인터페이스별 자동 재시도 효과 분석.
+
+    각 인터페이스에 대해:
+      - 단일 시도 호출 vs 재시도 발생 호출
+      - 재시도 후 복구된 호출 (multi_attempt + SUCCESS)
+      - 재시도해도 실패한 호출
+      - 평균 시도 횟수
+
+    REST/SOAP 만 자동 재시도 적용 — SFTP/MQ/BATCH 는 멱등성 문제로 attempt_count 항상 1.
+    """
+    since = now_kst() - timedelta(days=days)
+
+    sql = text(
+        """
+        SELECT
+            i.id              AS interface_id,
+            i.name            AS interface_name,
+            i.organization    AS organization,
+            i.retry_max       AS retry_max,
+            i.retry_backoff_seconds AS retry_backoff_seconds,
+            i.timeout_seconds AS timeout_seconds,
+            i.deleted_at      AS deleted_at,
+            COUNT(c.id)       AS total_calls,
+            SUM(CASE WHEN c.attempt_count = 1 THEN 1 ELSE 0 END) AS single_attempt_calls,
+            SUM(CASE WHEN c.attempt_count > 1 THEN 1 ELSE 0 END) AS multi_attempt_calls,
+            SUM(CASE WHEN c.attempt_count > 1 AND c.status = 'SUCCESS' THEN 1 ELSE 0 END) AS recovered_calls,
+            SUM(CASE WHEN c.attempt_count > 1 AND c.status <> 'SUCCESS' THEN 1 ELSE 0 END) AS failed_after_retry,
+            COALESCE(AVG(c.attempt_count), 1.0) AS avg_attempts
+        FROM interfaces i
+        LEFT JOIN call_logs c
+          ON c.interface_id = i.id AND c.called_at >= :since
+        WHERE i.deleted_at IS NULL
+        GROUP BY i.id, i.name, i.organization, i.retry_max,
+                 i.retry_backoff_seconds, i.timeout_seconds, i.deleted_at
+        ORDER BY recovered_calls DESC NULLS LAST, multi_attempt_calls DESC NULLS LAST
+        """
+    )
+    rows = db.execute(sql, {"since": since}).mappings().all()
+
+    out: list[RetryEffectRow] = []
+    for r in rows:
+        if only_with_policy and (r["retry_max"] or 0) == 0:
+            continue
+        out.append(
+            RetryEffectRow(
+                interface_id=r["interface_id"],
+                interface_name=r["interface_name"],
+                organization=r["organization"],
+                retry_max=int(r["retry_max"] or 0),
+                retry_backoff_seconds=float(r["retry_backoff_seconds"] or 1.0),
+                timeout_seconds=float(r["timeout_seconds"]) if r["timeout_seconds"] is not None else None,
+                total_calls=int(r["total_calls"] or 0),
+                single_attempt_calls=int(r["single_attempt_calls"] or 0),
+                multi_attempt_calls=int(r["multi_attempt_calls"] or 0),
+                recovered_calls=int(r["recovered_calls"] or 0),
+                failed_after_retry=int(r["failed_after_retry"] or 0),
+                avg_attempts=float(r["avg_attempts"] or 1.0),
+                deleted_at=r["deleted_at"],
+            )
+        )
+    return out
+
+
+@router.get("/retry-effects/summary", response_model=RetryEffectSummary)
+def retry_effects_summary(
+    days: int = Query(7, ge=1, le=30),
+    db: Session = Depends(get_db),
+) -> RetryEffectSummary:
+    """전체 재시도 효과 KPI — 페이지 헤더용."""
+    since = now_kst() - timedelta(days=days)
+    row = db.execute(text(
+        """
+        SELECT
+            COUNT(*) AS total_calls,
+            SUM(CASE WHEN attempt_count > 1 THEN 1 ELSE 0 END) AS multi_attempt_calls,
+            SUM(CASE WHEN attempt_count > 1 AND status = 'SUCCESS' THEN 1 ELSE 0 END) AS recovered_calls,
+            SUM(CASE WHEN attempt_count > 1 AND status <> 'SUCCESS' THEN 1 ELSE 0 END) AS failed_after_retry
+        FROM call_logs WHERE called_at >= :since
+        """
+    ), {"since": since}).mappings().one()
+
+    itf_total = db.scalar(select(func.count(Interface.id)).where(Interface.deleted_at.is_(None))) or 0
+    itf_with_retry = db.scalar(
+        select(func.count(Interface.id))
+        .where(Interface.deleted_at.is_(None))
+        .where(Interface.retry_max > 0)
+    ) or 0
+
+    multi = int(row["multi_attempt_calls"] or 0)
+    recovered = int(row["recovered_calls"] or 0)
+    return RetryEffectSummary(
+        days=days,
+        total_calls=int(row["total_calls"] or 0),
+        multi_attempt_calls=multi,
+        recovered_calls=recovered,
+        failed_after_retry=int(row["failed_after_retry"] or 0),
+        recovery_rate=(recovered / multi) if multi > 0 else 0.0,
+        interfaces_with_retry=int(itf_with_retry),
+        interfaces_total=int(itf_total),
+    )
 
 
 @router.get("/throughput", response_model=list[ThroughputPoint])

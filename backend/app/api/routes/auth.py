@@ -35,9 +35,7 @@ def login(
     request: Request,
     db: Session = Depends(get_db),
 ) -> LoginResponse:
-    """로그인 — 성공 시 JWT 발급. 실패는 카운트 + 감사 로그.
-
-    Phase B.1: 연속 실패가 settings.lockout_threshold 회 이상이면 잠금.
+    """로그인 — 성공 시 JWT 발급. 실패는 카운트 + 감사 로그.: 연속 실패가 settings.lockout_threshold 회 이상이면 잠금.
     잠금 중에는 비밀번호가 맞아도 423 LOCKED 로 거부 (남은 시간 안내).
     """
     s = get_settings()
@@ -134,7 +132,7 @@ def logout(
     db: Session = Depends(get_db),
     current: User = Depends(get_current_user),
 ) -> dict[str, str]:
-    """로그아웃 — Phase B.6 부터 서버 측에서도 토큰 무효화.
+    """로그아웃 — 부터 서버 측에서도 토큰 무효화.
 
     session_version 을 +1 → 발급된 모든 JWT 의 sv 가 mismatch 되어 다음 요청부터
     401. 다른 탭/디바이스의 세션도 함께 종료.
@@ -157,7 +155,7 @@ def change_password(
     db: Session = Depends(get_db),
     current: User = Depends(get_current_user),
 ) -> PasswordChangeResponse:
-    """본인 비밀번호 변경 (Phase B.3).
+    """본인 비밀번호 변경.
 
     - 현재 비밀번호 확인 후 진행
     - 신규 비밀번호는 정책 검증 (8자 + 3종 + 사용자명·직전과 다름)
@@ -183,7 +181,7 @@ def change_password(
 
     current.password_hash = hash_password(payload.new_password)
     current.must_change_password = False
-    # Phase B.6 — 비밀번호 변경 시 기존 세션 모두 무효화 (보안 best-practice).
+    # 비밀번호 변경 시 기존 세션 모두 무효화 (보안 best-practice).
     # session_version +1 → 옛 토큰들은 sv mismatch 로 401. 새 토큰은 갱신된
     # session_version 으로 발급되어 정상 동작.
     current.session_version = (current.session_version or 1) + 1

@@ -6,15 +6,17 @@ from typing import Any
 from croniter import croniter
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 
-from app.models.interface import AuthType, InterfaceCategory, ProtocolType
+from app.models.interface import AuthType, InterfaceCategory, InterfaceDirection, ProtocolType
 
 
 class InterfaceBase(BaseModel):
     name: str = Field(..., min_length=1, max_length=120)
     description: str | None = None
     organization: str | None = None
-    # Phase B.12 — 통합 관제 분류 (내부 핵심 / 외부 제휴 / 외부 규제기관)
+    # 통합 관제 분류 (내부 핵심 / 외부 제휴 / 외부 규제기관)
     category: InterfaceCategory = InterfaceCategory.EXTERNAL_PARTNER
+    # 호출 방향 (OUTBOUND=우리가 호출 / INBOUND=외부가 우리를 호출)
+    direction: InterfaceDirection = InterfaceDirection.OUTBOUND
     protocol: ProtocolType = ProtocolType.REST
     endpoint: str = Field(..., min_length=1, max_length=500)
     method: str = Field("GET", max_length=10)
@@ -25,10 +27,10 @@ class InterfaceBase(BaseModel):
     enabled: bool = True
     response_ms_threshold: int | None = Field(default=None, ge=1)
     failure_rate_threshold: float | None = Field(default=None, ge=0.0, le=1.0)
-    # Phase B.7 알림 룰
+    # 알림 룰
     muted_until: datetime | None = None
     alert_channels: list[str] | None = None
-    # Phase B.9 호출 안정성
+    # 호출 안정성
     timeout_seconds: float | None = Field(default=None, ge=0.5, le=300.0)
     retry_max: int = Field(default=0, ge=0, le=5)
     retry_backoff_seconds: float = Field(default=1.0, ge=0.0, le=30.0)
@@ -50,6 +52,7 @@ class InterfaceUpdate(BaseModel):
     description: str | None = None
     organization: str | None = None
     category: InterfaceCategory | None = None
+    direction: InterfaceDirection | None = None
     protocol: ProtocolType | None = None
     endpoint: str | None = None
     method: str | None = None
@@ -64,8 +67,8 @@ class InterfaceUpdate(BaseModel):
     enabled: bool | None = None
     response_ms_threshold: int | None = None
     failure_rate_threshold: float | None = None
-    alert_channels: list[str] | None = None  # Phase B.7
-    # Phase B.9 호출 안정성
+    alert_channels: list[str] | None = None
+    # 호출 안정성
     timeout_seconds: float | None = Field(default=None, ge=0.5, le=300.0)
     retry_max: int | None = Field(default=None, ge=0, le=5)
     retry_backoff_seconds: float | None = Field(default=None, ge=0.0, le=30.0)

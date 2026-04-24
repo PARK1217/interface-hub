@@ -63,35 +63,41 @@ _DEMO_MIGRATIONS: list[str] = [
     # 인터페이스 소프트 삭제 (deleted_at 만 마킹, hard delete 절대 X)
     "ALTER TABLE interfaces ADD COLUMN IF NOT EXISTS deleted_at TIMESTAMPTZ",
     "CREATE INDEX IF NOT EXISTS ix_interfaces_deleted_at ON interfaces(deleted_at)",
-    # Phase A: call_logs 에 행위자 추적 (manual/reprocess/ingest 시 누가 했는지)
+    # call_logs 에 행위자 추적 (manual/reprocess/ingest 시 누가 했는지)
     "ALTER TABLE call_logs ADD COLUMN IF NOT EXISTS actor_user_id INTEGER REFERENCES users(id) ON DELETE SET NULL",
     "CREATE INDEX IF NOT EXISTS ix_call_logs_actor_user_id ON call_logs(actor_user_id)",
-    # Phase B.1 계정 lockout (연속 실패 + 잠금 해제 시각)
+    # 계정 lockout (연속 실패 + 잠금 해제 시각)
     "ALTER TABLE users ADD COLUMN IF NOT EXISTS failed_login_count INTEGER NOT NULL DEFAULT 0",
     "ALTER TABLE users ADD COLUMN IF NOT EXISTS locked_until TIMESTAMPTZ",
-    # Phase B.4 강제 비밀번호 변경 플래그
+    # 강제 비밀번호 변경 플래그
     "ALTER TABLE users ADD COLUMN IF NOT EXISTS must_change_password BOOLEAN NOT NULL DEFAULT FALSE",
-    # Phase B.6 세션 버전 (강제 로그아웃 — JWT payload.sv 와 비교)
+    # 세션 버전 (강제 로그아웃 — JWT payload.sv 와 비교)
     "ALTER TABLE users ADD COLUMN IF NOT EXISTS session_version INTEGER NOT NULL DEFAULT 1",
-    # Phase B.7 알림 룰 (인터페이스별 음소거 + 채널 화이트리스트)
+    # 알림 룰 (인터페이스별 음소거 + 채널 화이트리스트)
     "ALTER TABLE interfaces ADD COLUMN IF NOT EXISTS muted_until TIMESTAMPTZ",
     "ALTER TABLE interfaces ADD COLUMN IF NOT EXISTS alert_channels JSON DEFAULT '[\"in_app\",\"slack\",\"email\"]'",
-    # Phase B.8.11 — AI 질의 결과 분류 (popular/history/suggestions 필터 용)
+    # AI 질의 결과 분류 (popular/history/suggestions 필터 용)
     "ALTER TABLE ai_query_logs ADD COLUMN IF NOT EXISTS outcome VARCHAR(30) NOT NULL DEFAULT 'success'",
     "CREATE INDEX IF NOT EXISTS ix_ai_query_logs_outcome ON ai_query_logs(outcome)",
-    # Phase B.9 호출 안정성 (재시도 + timeout)
+    # 호출 안정성 (재시도 + timeout)
     "ALTER TABLE interfaces ADD COLUMN IF NOT EXISTS timeout_seconds DOUBLE PRECISION",
     "ALTER TABLE interfaces ADD COLUMN IF NOT EXISTS retry_max INTEGER NOT NULL DEFAULT 0",
     "ALTER TABLE interfaces ADD COLUMN IF NOT EXISTS retry_backoff_seconds DOUBLE PRECISION NOT NULL DEFAULT 1.0",
     "ALTER TABLE call_logs ADD COLUMN IF NOT EXISTS attempt_count INTEGER NOT NULL DEFAULT 1",
-    # Phase B.12 — 인터페이스 카테고리 (내부 핵심 / 외부 제휴 / 외부 규제기관)
+    # 인터페이스 카테고리 (내부 핵심 / 외부 제휴 / 외부 규제기관)
     # PG 의 ENUM 은 트랜잭션 안에서 까다로워 IF NOT EXISTS 로 안전 추가.
     """DO $$ BEGIN
         CREATE TYPE interfacecategory AS ENUM ('INTERNAL_CORE', 'EXTERNAL_PARTNER', 'EXTERNAL_REGULATOR');
     EXCEPTION WHEN duplicate_object THEN NULL; END $$""",
     "ALTER TABLE interfaces ADD COLUMN IF NOT EXISTS category interfacecategory NOT NULL DEFAULT 'EXTERNAL_PARTNER'",
     "CREATE INDEX IF NOT EXISTS ix_interfaces_category ON interfaces(category)",
-    # Phase B.10 전역 알림 룰 (severity 라우팅 + 근무시간 외 silence)
+    # 호출 방향 (OUTBOUND/INBOUND)
+    """DO $$ BEGIN
+        CREATE TYPE interfacedirection AS ENUM ('OUTBOUND', 'INBOUND');
+    EXCEPTION WHEN duplicate_object THEN NULL; END $$""",
+    "ALTER TABLE interfaces ADD COLUMN IF NOT EXISTS direction interfacedirection NOT NULL DEFAULT 'OUTBOUND'",
+    "CREATE INDEX IF NOT EXISTS ix_interfaces_direction ON interfaces(direction)",
+    # 전역 알림 룰 (severity 라우팅 + 근무시간 외 silence)
     """CREATE TABLE IF NOT EXISTS alert_rules (
         id SERIAL PRIMARY KEY,
         info_channels JSON NOT NULL DEFAULT '["in_app"]',

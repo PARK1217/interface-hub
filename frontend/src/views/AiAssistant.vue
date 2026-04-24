@@ -114,7 +114,7 @@
               placeholder="예) 보험개발원 연동 API 가 오늘 오후 3시 이후 응답 지연 중이야. 원인 분석해줘."
             />
 
-            <!-- Phase B.8.5 — 동적 prompt 추천. popular > incident > interface 템플릿 자동 분기 -->
+            <!-- 동적 prompt 추천. popular > incident > interface 템플릿 자동 분기 -->
             <div v-if="suggestions.length" class="mb-2">
               <div class="text-caption text-medium-emphasis mb-1 d-flex align-center">
                 <v-icon icon="mdi-lightbulb-outline" size="small" class="mr-1" />
@@ -205,7 +205,7 @@
             >
               repeated
             </v-chip>
-            <!-- Phase B.8.17 — fallback 체인이 쓰인 경우 표시 -->
+            <!-- fallback 체인이 쓰인 경우 표시 -->
             <v-chip
               v-if="llmAttempts.length && lastMode === 'llm'"
               size="x-small"
@@ -264,7 +264,7 @@
         </v-card>
       </v-col>
 
-      <!-- Phase B.8.6 — 본인 대화 히스토리 사이드 패널 -->
+      <!-- 본인 대화 히스토리 사이드 패널 -->
       <v-col v-if="showHistory" cols="4">
         <v-card variant="flat" border>
           <v-card-title class="d-flex align-center">
@@ -359,7 +359,7 @@ import { useRouter } from 'vue-router';
 const router = useRouter();
 
 function drillIntoIncident(incidentId: number) {
-  // Phase B.11 — case_lookup 결과의 유사 사례를 클릭하면 incidents 페이지에서
+  // case_lookup 결과의 유사 사례를 클릭하면 incidents 페이지에서
   // 해당 행을 자동 강조. ?focus=ID 쿼리는 Incidents.vue 가 onMounted 에서 읽음.
   router.push({ path: '/incidents', query: { focus: String(incidentId) } });
 }

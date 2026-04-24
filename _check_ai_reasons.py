@@ -1,5 +1,4 @@
 """AI 실패 사유 세분화 검증 — kind 13종 + analysis_note.
-
 시나리오:
   1) 정상 질문 → llm_error=None, analysis_note=None or no_match (질문에 따라)
   2) 빈 질문 ("ab") → analysis_note.kind='empty_question'

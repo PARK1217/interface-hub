@@ -17,7 +17,7 @@ class UserOut(BaseModel):
     role: UserRole
     last_login_at: datetime | None = None
     disabled_at: datetime | None = None
-    # Phase B.1 / B.4 — 잠금 / 강제 비밀번호 변경 상태
+    # / B.4 — 잠금 / 강제 비밀번호 변경 상태
     failed_login_count: int = 0
     locked_until: datetime | None = None
     must_change_password: bool = False
@@ -59,7 +59,7 @@ class PasswordResetResponse(BaseModel):
 
 
 class PasswordChangeRequest(BaseModel):
-    """본인 비밀번호 변경 (Phase B.3)."""
+    """본인 비밀번호 변경."""
 
     current_password: str = Field(..., min_length=1)
     new_password: str = Field(..., min_length=1)
@@ -68,7 +68,7 @@ class PasswordChangeRequest(BaseModel):
 class PasswordChangeResponse(BaseModel):
     """비밀번호 변경 후 새로 발급된 토큰을 함께 반환.
 
-    Phase B.6 — 비밀번호 변경 시 기존 세션 모두 무효화하므로 본 요청의
+    비밀번호 변경 시 기존 세션 모두 무효화하므로 본 요청의
     토큰도 함께 무효가 됨. 프론트가 즉시 새 토큰으로 교체하도록 같이 응답.
     """
 

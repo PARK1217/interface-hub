@@ -80,7 +80,7 @@ def create_user(
         full_name=payload.full_name,
         email=payload.email,
         role=payload.role,
-        # 관리자 발급 비밀번호는 첫 로그인 시 변경 강제 (Phase B.4)
+        # 관리자 발급 비밀번호는 첫 로그인 시 변경 강제
         must_change_password=True,
     )
     db.add(obj)
@@ -183,7 +183,7 @@ def force_logout_user(
     db: Session = Depends(get_db),
     actor: User = Depends(require_role([UserRole.ADMIN])),
 ) -> UserOut:
-    """대상 사용자의 모든 활성 세션 즉시 종료 (Phase B.6).
+    """대상 사용자의 모든 활성 세션 즉시 종료.
 
     session_version 을 +1 → 발급된 모든 JWT 가 sv mismatch 로 다음 요청부터
     401. 토큰 탈취 의심 / 퇴사 / 권한 회수 등 즉시 격리가 필요한 시나리오에 사용.
@@ -210,7 +210,7 @@ def unlock_user(
     db: Session = Depends(get_db),
     actor: User = Depends(require_role([UserRole.ADMIN])),
 ) -> UserOut:
-    """잠긴 계정 강제 해제 (Phase B.1).
+    """잠긴 계정 강제 해제.
 
     failed_login_count 리셋 + locked_until 제거. 잠긴 상태가 아니어도 멱등.
     """
@@ -241,7 +241,7 @@ def reset_password(
 ) -> PasswordResetResponse:
     """관리자가 임시 비밀번호 발급. 응답에만 1회 노출.
 
-    - must_change_password=True 로 강제 변경 유도 (Phase B.4)
+    - must_change_password=True 로 강제 변경 유도
     - 잠금/실패 카운트도 같이 초기화 (계정 복구 한 번에)
     """
     obj = db.get(User, user_id)

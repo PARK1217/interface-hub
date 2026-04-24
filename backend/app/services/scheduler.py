@@ -17,6 +17,7 @@ from sqlalchemy import select
 from app.core.database import SessionLocal
 from app.core.time import KST
 from app.models import Interface
+from app.models.interface import InterfaceDirection
 
 log = logging.getLogger("noahub.scheduler")
 _scheduler: AsyncIOScheduler | None = None
@@ -52,10 +53,12 @@ def sync_jobs() -> None:
     db = SessionLocal()
     try:
         rows = db.scalars(select(Interface)).all()
+        # INBOUND 인터페이스는 우리가 능동 호출 안 하므로 cron 등록 X
         wanted: dict[str, tuple[int, str]] = {
             _job_id(itf.id): (itf.id, itf.schedule_cron)
             for itf in rows
             if itf.enabled and itf.schedule_cron
+            and itf.direction != InterfaceDirection.INBOUND
         }
         for job in sched.get_jobs():
             if job.id not in wanted:

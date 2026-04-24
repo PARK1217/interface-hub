@@ -1,6 +1,6 @@
-"""전역 알림 룰 (Phase B.10).
+"""전역 알림 룰.
 
-인터페이스별 알림 설정(muted_until / alert_channels)은 Phase B.7 에서 이미
+인터페이스별 알림 설정(muted_until / alert_channels)은 에서 이미
 처리. 이 테이블은 그 위에 얹히는 **전역 정책**:
 
 1. severity 별 채널 라우팅

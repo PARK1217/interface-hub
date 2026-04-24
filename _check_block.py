@@ -1,5 +1,4 @@
 import json, urllib.request, urllib.error
-
 target_id = 14
 urllib.request.urlopen(urllib.request.Request(f'http://localhost:8000/api/interfaces/{target_id}', method='DELETE'))
 try:

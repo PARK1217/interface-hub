@@ -36,7 +36,7 @@ class LLMErrorOut(BaseModel):
 
 
 class LLMAttemptOut(BaseModel):
-    """Fallback 체인 시도 중 실패한 프로바이더 기록 (Phase B.8.17)."""
+    """Fallback 체인 시도 중 실패한 프로바이더 기록."""
     provider: str
     kind: str
     status: int | None = None
@@ -61,16 +61,16 @@ class AskResponse(BaseModel):
     provider: str | None = None
     model: str | None = None
     llm_error: LLMErrorOut | None = None
-    # Phase B.8.17 — 체인 순회 중 실패했던 프로바이더들 (성공해도 여기 담길 수 있음).
+    # 체인 순회 중 실패했던 프로바이더들 (성공해도 여기 담길 수 있음).
     llm_attempts: list[LLMAttemptOut] = []
     analysis_note: AnalysisNoteOut | None = None
-    # Phase B.8.7 — 질문 의도 분류 (UI 칩 표시 + 동작 분기)
+    # 질문 의도 분류 (UI 칩 표시 + 동작 분기)
     intent: str = "general"  # "stats_query" | "case_lookup" | "config_query" | "general"
-    # Phase B.8.11 — 분석 성공/실패 유형 (popular/history/suggestions 필터)
+    # 분석 성공/실패 유형 (popular/history/suggestions 필터)
     outcome: str = "success"
-    # Phase B.8.12 — 최근 24h 내 같은 질문이 이미 실패로 판정돼 재호출 없이 반환
+    # 최근 24h 내 같은 질문이 이미 실패로 판정돼 재호출 없이 반환
     repeated_failure: bool = False
-    # Phase B.8 — 캐시 hit 여부 (UI ⚡ 칩 표시용)
+    # 캐시 hit 여부 (UI ⚡ 칩 표시용)
     cached: bool = False
 
 
@@ -93,7 +93,7 @@ class HistoryItem(BaseModel):
     provider: str | None
     cached: bool
     llm_error_kind: str | None
-    outcome: str  # Phase B.8.11 — 성공/실패 유형
+    outcome: str  # 성공/실패 유형
     response_excerpt: str | None
     asked_at: str
 
@@ -116,7 +116,7 @@ async def ask(
     db: Session = Depends(get_db),
     current: User = Depends(get_current_user),
 ) -> AskResponse:
-    """질의 — Phase B.8 부터 인증 필수 (질의 로그에 actor 기록).
+    """질의 — 부터 인증 필수 (질의 로그에 actor 기록).
 
     캐시 hit 시 LLM 호출 / TF-IDF 검색 모두 스킵하고 즉시 반환.
     """
@@ -131,7 +131,7 @@ def anomaly(interface_id: int, db: Session = Depends(get_db)) -> AnomalyResponse
 
 
 # ============================================================================
-# Phase B.8 — Popular / History / Suggestions
+# Popular / History / Suggestions
 # ============================================================================
 
 @router.get("/popular-questions", response_model=list[PopularQuestion])
@@ -141,13 +141,13 @@ def popular_questions(
     db: Session = Depends(get_db),
     _: User = Depends(get_current_user),
 ) -> list[PopularQuestion]:
-    """최근 N일간 가장 많이 호출된 질문 Top K (Phase B.8.3).
+    """최근 N일간 가장 많이 호출된 질문 Top K.
 
     question_hash 그룹화 (정규화 trim+lower+공백 단일화 적용된 키) — "보험개발원
     5xx ?" / " 보험개발원   5xx? " 는 같은 그룹.
     """
     since = now_kst() - timedelta(days=days)
-    # Phase B.8.13 — outcome='success' 만 popular 에 노출 (실패 질문은 통계에서 제외)
+    # outcome='success' 만 popular 에 노출 (실패 질문은 통계에서 제외)
     rows = db.execute(
         select(
             AiQueryLog.question_hash,
@@ -190,7 +190,7 @@ def my_history(
     db: Session = Depends(get_db),
     current: User = Depends(get_current_user),
 ) -> list[HistoryItem]:
-    """본인의 최근 질의 이력. 기본은 성공만 (Phase B.8.13)."""
+    """본인의 최근 질의 이력. 기본은 성공만."""
     stmt = (
         select(AiQueryLog)
         .where(AiQueryLog.actor_user_id == current.id)
@@ -222,7 +222,7 @@ def suggestions(
     db: Session = Depends(get_db),
     _: User = Depends(get_current_user),
 ) -> list[SuggestionItem]:
-    """프롬프트 추천 (Phase B.8.5).
+    """프롬프트 추천.
 
     우선순위:
       1. **popular** — 최근 14일 자주 묻는 질문 (있으면)
@@ -230,10 +230,10 @@ def suggestions(
       3. **interface_template** — 등록된 인터페이스 무작위 선정 + 템플릿
 
     AI 페이지 chip 영역 / 빈 상태 모두에서 사용. "데이터 없으면 인터페이스
-    설정으로 만들어달라" 요구사항 (Phase B.8) 충족.
+    설정으로 만들어달라" 요구사항 충족.
     """
     # 후보를 일단 넉넉히 (limit * 3) 생성해놓고, TF-IDF 사전 매칭으로 임계 미달
-    # (no_match 가 날 것들) 을 제거한 뒤 상위 limit 만 반환 — Phase B.8.16.
+    # (no_match 가 날 것들) 을 제거한 뒤 상위 limit 만 반환 —.
     # popular / incident_recent 는 이미 자기 매칭 보장이지만, interface_template 은
     # 랜덤 템플릿이라 매칭 안 되는 chip 이 UI 에 뜨면 사용자 클릭 시 no_match 가 나옴.
     candidates: list[SuggestionItem] = []

@@ -42,10 +42,10 @@ class Settings(BaseSettings):
     embedding_model: str = "text-embedding-3-small"
     llm_model: str = "gpt-4o-mini"  # legacy — ai_model 우선
 
-    # Phase B.8 — AI 응답 Redis 캐싱 TTL (초). 0 으로 두면 캐시 비활성.
+    # AI 응답 Redis 캐싱 TTL (초). 0 으로 두면 캐시 비활성.
     ai_cache_ttl_seconds: int = 3600  # 1시간
 
-    # Phase B.8.17 — LLM 프로바이더 fallback 체인 (쉼표 구분).
+    # LLM 프로바이더 fallback 체인 (쉼표 구분).
     # 예: "mistral,openai,anthropic" → 첫 번째 실패하면 두 번째, 그 다음 세 번째로.
     # 빈 값이면 ai_provider + 키가 설정된 나머지 프로바이더 순으로 자동 구성.
     ai_fallback_chain: str = ""
@@ -58,18 +58,18 @@ class Settings(BaseSettings):
     # Leave blank for open ingest (development).
     ingest_api_key: str | None = None
 
-    # JWT (Phase A 인증)
+    # JWT 인증
     # 토큰 서명 키. 운영에서는 별도 32바이트 시크릿 사용 권장 (지금은 SECRET_KEY 재사용).
     jwt_secret: str | None = None
     jwt_algorithm: str = "HS256"
     jwt_ttl_minutes: int = 240  # 4시간
 
-    # Phase B.1 계정 lockout — 금감원 전자금융감독규정 권고
+    # 계정 lockout — 금감원 전자금융감독규정 권고
     # N회 연속 실패 시 M분간 잠금. 0 으로 두면 lockout 비활성.
     lockout_threshold: int = 5
     lockout_minutes: int = 30
 
-    # Phase B.2 비밀번호 정책 — 금감원 권고 (8자 이상 + 3종 조합)
+    # 비밀번호 정책 — 금감원 권고 (8자 이상 + 3종 조합)
     password_min_length: int = 8
     password_require_complexity: bool = True  # 영문/숫자/특수문자 중 3종
 

@@ -26,7 +26,7 @@ ALL_CHANNELS = (CH_IN_APP, CH_SLACK, CH_EMAIL)
 
 @dataclass
 class GlobalRuleDecision:
-    """전역 알림 룰 평가 결과 (Phase B.10).
+    """전역 알림 룰 평가 결과.
 
     - allowed_channels: severity 별 화이트리스트 (인터페이스 화이트리스트와 교집합)
     - quiet_now: 현재 quiet hours / 주말 silence 인지
@@ -59,7 +59,7 @@ def _within_quiet_hours(start: int, end: int, now_hour: int) -> bool:
 def evaluate_global_rule(severity: str) -> GlobalRuleDecision:
     """전역 룰 평가 — severity (info/warning/critical) 와 현재 시각 기준.
 
-    인터페이스의 alert_channels (Phase B.7) 와는 별개. 두 개 모두 통과해야 발송.
+    인터페이스의 alert_channels 와는 별개. 두 개 모두 통과해야 발송.
     인터페이스의 muted_until 도 별도 — dispatch_alert 에서 따로 검사.
     """
     rule = _load_global_rule()
@@ -142,7 +142,7 @@ async def _send_email(subject: str, body: str) -> None:
 
 
 def _is_muted(itf: Interface) -> bool:
-    """Phase B.7 — muted_until 이 미래면 음소거 중."""
+    """muted_until 이 미래면 음소거 중."""
     return itf.muted_until is not None and itf.muted_until > now_kst()
 
 
@@ -158,7 +158,7 @@ def _enabled_channels(itf: Interface) -> set[str]:
 
 
 async def dispatch_alert(itf: Interface, incident: Incident) -> None:
-    """Incident 발생 시 알림 발송 — Phase B.7 인터페이스 룰 + Phase B.10 전역 룰.
+    """Incident 발생 시 알림 발송 — 인터페이스 룰 + 전역 룰.
 
     채널별 발송 여부 (모두 통과해야 발송):
     1. 인터페이스 muted_until 미래 → 전부 skip
@@ -223,11 +223,10 @@ async def dispatch_alert(itf: Interface, incident: Incident) -> None:
             "severity": incident.severity,
             "summary": incident.summary,
             "detected_at": incident.detected_at.isoformat() if incident.detected_at else None,
-            # Phase B.7
             "should_alert": should_alert_in_app,
             "muted": muted,
             "muted_until": itf.muted_until.isoformat() if itf.muted_until else None,
-            # Phase B.10 — 전역 룰 적용 결과 (UI 안내용)
+            # 전역 룰 적용 결과 (UI 안내용)
             "silenced": silenced,
             "silenced_reason": silence_reason,
             "effective_channels": sorted(effective),

@@ -48,12 +48,12 @@ class CallLog(Base):
     retry_count: Mapped[int] = mapped_column(Integer, default=0)
     is_reprocessed: Mapped[bool] = mapped_column(Boolean, default=False, index=True)
 
-    # Phase B.9 — 호출당 자동 재시도 시도 횟수 (1=재시도 없이 1회로 끝, 2=재시도 1회 후 성공/실패).
+    # 호출당 자동 재시도 시도 횟수 (1=재시도 없이 1회로 끝, 2=재시도 1회 후 성공/실패).
     # `retry_count` 와 별개 — 그건 "운영자 reprocess" 체인 깊이고, 이 컬럼은
     # "한 번의 execute 안에서 backoff 로 자동 재시도한 횟수". UI 에서 ↻×2 같이 표시.
     attempt_count: Mapped[int] = mapped_column(Integer, default=1, nullable=False)
 
-    # --- actor (Phase A) -------------------------------------------------------
+    # --- actor ----------------------------------------------------------------
     # manual / reprocess / ingest 호출 시 어느 사용자가 트리거했는지.
     # schedule (cron) 호출은 NULL.
     actor_user_id: Mapped[int | None] = mapped_column(

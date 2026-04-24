@@ -26,7 +26,7 @@ from app.core.time import now_kst
 from app.models import CallLog, Incident, Interface, SlaTarget, User, UserRole
 from app.models.call_log import CallStatus
 from app.models.incident import IncidentType
-from app.models.interface import AuthType, InterfaceCategory, ProtocolType
+from app.models.interface import AuthType, InterfaceCategory, InterfaceDirection, ProtocolType
 
 random.seed(42)
 NOW = now_kst()
@@ -238,7 +238,7 @@ SEED_INTERFACES: list[dict] = [
             "content": "interface,uptime,p95\nKIDI-실손,98.66,194\n",
         },
     },
-    # ─── Phase B.12: 내부 핵심 시스템 (기획서 1번 항목 — 외부 기관과 함께 통합 관제) ───
+    # ───: 내부 핵심 시스템 (기획서 1번 항목 — 외부 기관과 함께 통합 관제) ───
     {
         "name": "사내-보험금계산엔진",
         "organization": "사내 / Claims Engine",
@@ -263,10 +263,43 @@ SEED_INTERFACES: list[dict] = [
         "rps": 9.0, "fail_rate": 0.005, "latency_ms": (130, 40),
         "sla": (99.9, 400),
     },
+    # ───: INBOUND 인터페이스 (외부가 우리를 호출) ───
+    {
+        "name": "토스페이먼츠-결제결과-Webhook",
+        "organization": "토스페이먼츠 (PG)",
+        "description": "결제 승인/취소/실패 결과를 토스가 우리 webhook 으로 비동기 푸시.",
+        # 우리 측 endpoint — 외부가 이 URL 로 POST 함.
+        "protocol": ProtocolType.REST,
+        "endpoint": "/api/webhooks/tosspayments",
+        "method": "POST",
+        "schedule_cron": None,  # INBOUND 라 cron 없음
+        "auth_type": AuthType.NONE,
+        "rps": 6.0, "fail_rate": 0.005, "latency_ms": (45, 15),  # webhook 수신 처리 시간
+        "sla": (99.9, 200),
+    },
+    {
+        "name": "카카오알림톡-발송결과-Callback",
+        "organization": "카카오 비즈메시지",
+        "description": "알림톡 수신 성공/실패/이탈 결과를 카카오가 우리 callback 으로 통보.",
+        "protocol": ProtocolType.REST,
+        "endpoint": "/api/webhooks/kakao-alimtalk",
+        "method": "POST",
+        "schedule_cron": None,
+        "auth_type": AuthType.NONE,
+        "rps": 28.0, "fail_rate": 0.002, "latency_ms": (35, 10),
+        "sla": (99.5, 150),
+    },
 ]
 
 
-# Phase B.12 — 인터페이스 이름 → category 매핑.
+# INBOUND 인터페이스 이름 set (시드 적용용)
+SEED_INBOUND: set[str] = {
+    "토스페이먼츠-결제결과-Webhook",
+    "카카오알림톡-발송결과-Callback",
+}
+
+
+# 인터페이스 이름 → category 매핑.
 # 시드 데이터의 14개 외부 + 2개 내부를 정확히 분류. 운영자가 등록 다이얼로그에서
 # 직접 고르는 게 정상이지만 시드는 평가관에게 "분류 시스템이 동작한다" 보여주는 용도.
 SEED_CATEGORY: dict[str, InterfaceCategory] = {
@@ -289,6 +322,21 @@ SEED_CATEGORY: dict[str, InterfaceCategory] = {
     # 사내 핵심
     "사내-보험금계산엔진": InterfaceCategory.INTERNAL_CORE,
     "사내-CB평가모듈": InterfaceCategory.INTERNAL_CORE,
+    # INBOUND webhook — 외부 제휴사가 우리를 호출
+    "토스페이먼츠-결제결과-Webhook": InterfaceCategory.EXTERNAL_PARTNER,
+    "카카오알림톡-발송결과-Callback": InterfaceCategory.EXTERNAL_PARTNER,
+}
+
+
+# 자동 재시도 정책 — 5xx/timeout 흔한 외부 기관에 우선 적용.
+# RetryAnalytics 페이지에서 효과 시각화의 데이터 소스.
+SEED_RETRY_POLICY: dict[str, tuple[int, float]] = {
+    # name → (retry_max, retry_backoff_seconds)
+    "보험개발원-실손중복청구확인": (3, 0.5),   # 5xx 가끔 → 짧은 backoff 로 빠른 복구
+    "신용정보원-CB조회": (2, 1.0),             # OAuth 토큰 만료 직후 401 — 재시도해도 의미 X 라 적게
+    "마이데이터허브-자산스크래핑": (3, 1.5),   # 외부 종속성 많음 → 긴 backoff
+    "국세청-사업자상태조회": (2, 1.0),
+    "토스페이먼츠-자동이체": (2, 0.5),         # 결제 — 잘못 재시도 시 중복 결제 위험으로 짧게
 }
 
 
@@ -620,6 +668,25 @@ def _generate_logs(itf: Interface, profile: dict, db) -> int:
         success = random.random() > min(fail_rate, 0.6)
         status, http_status, err, err_type, err_trace = _classify_log(success, latency, profile)
 
+        # 자동 재시도 시뮬 — retry_max>0 인 인터페이스에서 1차 실패한 5xx/timeout
+        # 호출 중 일부가 재시도로 복구된 흔적을 남김 (RetryAnalytics 페이지가 보여줄 데이터).
+        # 현실 가정: 재시도로 60% 정도는 살아남고 나머지는 끝까지 실패.
+        attempt_count = 1
+        if (
+            itf.retry_max
+            and itf.retry_max > 0
+            and not success
+            and status in (CallStatus.SERVER_ERROR, CallStatus.TIMEOUT, CallStatus.FAILURE)
+        ):
+            # 1~retry_max 중 랜덤 (1=처음 호출만, 그 이상은 재시도 발생)
+            attempt_count = random.randint(2, itf.retry_max + 1)
+            # 60% 확률로 최종 SUCCESS 로 복구
+            if random.random() < 0.6:
+                success = True
+                status, http_status, err, err_type, err_trace = _classify_log(True, latency, profile)
+                # 재시도 후 성공이면 latency 는 누적 (대략 attempt × 단일)
+                latency = latency * attempt_count
+
         # snapshot a fresh body per row so request varies (different claim_no etc.)
         req_body, succ_body = _payloads_for(itf.name)
         rows.append(
@@ -640,6 +707,7 @@ def _generate_logs(itf: Interface, profile: dict, db) -> int:
                 error_trace=err_trace,
                 triggered_by="schedule" if itf.schedule_cron else "manual",
                 called_at=ts,
+                attempt_count=attempt_count,
             )
         )
     db.add_all(rows)
@@ -721,10 +789,15 @@ def main() -> None:
 
         name_to_itf: dict[str, Interface] = {}
         for spec in SEED_INTERFACES:
+            retry_max, retry_backoff = SEED_RETRY_POLICY.get(spec["name"], (0, 1.0))
             itf = Interface(
                 name=spec["name"],
                 organization=spec["organization"],
                 category=SEED_CATEGORY.get(spec["name"], InterfaceCategory.EXTERNAL_PARTNER),
+                direction=(
+                    InterfaceDirection.INBOUND if spec["name"] in SEED_INBOUND
+                    else InterfaceDirection.OUTBOUND
+                ),
                 description=spec["description"],
                 protocol=spec["protocol"],
                 endpoint=spec["endpoint"],
@@ -734,6 +807,8 @@ def main() -> None:
                 request_template=spec.get("request_template"),
                 auth_secret=encrypt_secret(spec["auth_secret_plain"]) if spec.get("auth_secret_plain") else None,
                 enabled=True,
+                retry_max=retry_max,
+                retry_backoff_seconds=retry_backoff,
             )
             db.add(itf)
             db.flush()

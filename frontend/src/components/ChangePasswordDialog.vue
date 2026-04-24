@@ -1,8 +1,8 @@
 <!--
-  비밀번호 변경 다이얼로그 (Phase B.3 / B.4 공용).
+  비밀번호 변경 다이얼로그 ( / B.4 공용).
 
   - props.forced=true 면 닫기 버튼 / 외부 클릭 닫기 비활성 → 강제 변경 모드
-    (Phase B.4: 관리자 발급 임시 비밀번호로 처음 로그인한 사용자 차단)
+    (: 관리자 발급 임시 비밀번호로 처음 로그인한 사용자 차단)
   - 정책: 8자 이상 + 영문/숫자/특수문자 모두 포함 + 사용자명·직전과 다름
     (서버에서 한 번 더 검증되지만, UX 위해 클라이언트 즉시 피드백)
 -->
@@ -191,7 +191,7 @@ async function onSubmit() {
   busy.value = true;
   serverError.value = '';
   try {
-    // Phase B.6 — 응답에 새 access_token 포함. 기존 토큰은 서버에서 무효화되므로
+    // 응답에 새 access_token 포함. 기존 토큰은 서버에서 무효화되므로
     // 즉시 교체. setToken 을 setUser 보다 먼저 호출해야 다음 axios 호출이 새 토큰 사용.
     const res = await Auth.changePassword(currentPw.value, newPw.value);
     auth.setToken(res.data.access_token, res.data.expires_at);

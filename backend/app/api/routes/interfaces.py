@@ -9,7 +9,7 @@ from app.api.deps import get_current_user, get_db, require_role
 from app.core.security import decrypt_secret, encrypt_secret
 from app.core.time import now_kst
 from app.models import Interface, User, UserRole
-from app.models.interface import InterfaceCategory, ProtocolType
+from app.models.interface import InterfaceCategory, InterfaceDirection, ProtocolType
 from app.schemas.interface import (
     InterfaceCreate,
     InterfaceOut,
@@ -63,6 +63,7 @@ def list_interfaces(
     organization: str | None = None,
     protocol: ProtocolType | None = None,
     category: InterfaceCategory | None = None,
+    direction: InterfaceDirection | None = None,
     include_deleted: bool = False,
     only_deleted: bool = False,
     db: Session = Depends(get_db),
@@ -81,6 +82,8 @@ def list_interfaces(
         stmt = stmt.where(Interface.protocol == protocol)
     if category is not None:
         stmt = stmt.where(Interface.category == category)
+    if direction is not None:
+        stmt = stmt.where(Interface.direction == direction)
     return [_to_out(i) for i in db.scalars(stmt.order_by(Interface.id.desc())).all()]
 
 
@@ -251,7 +254,7 @@ def mute_interface(
     db: Session = Depends(get_db),
     actor: User = Depends(require_role([UserRole.OPERATOR, UserRole.ADMIN])),
 ) -> InterfaceOut:
-    """알림 음소거 — Phase B.7. 정기 점검 등 의도적 알림 폭주 방지용.
+    """알림 음소거 —. 정기 점검 등 의도적 알림 폭주 방지용.
 
     - minutes 분 후 자동 해제 (muted_until = now + minutes)
     - incident 자체는 정상 생성, 대시보드 카운트도 갱신. toast/slack/email 만 skip.
@@ -284,7 +287,7 @@ def unmute_interface(
     db: Session = Depends(get_db),
     actor: User = Depends(require_role([UserRole.OPERATOR, UserRole.ADMIN])),
 ) -> InterfaceOut:
-    """음소거 즉시 해제 (Phase B.7). 멱등 — 음소거 안 된 상태에서 호출해도 OK."""
+    """음소거 즉시 해제. 멱등 — 음소거 안 된 상태에서 호출해도 OK."""
     obj = db.get(Interface, interface_id)
     if not obj:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "interface not found")

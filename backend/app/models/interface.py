@@ -25,8 +25,25 @@ class AuthType(str, enum.Enum):
     BEARER = "BEARER"
 
 
+class InterfaceDirection(str, enum.Enum):
+    """호출 방향 — 기획서 정합성 보강.
+
+    기존 모델은 "우리가 외부를 호출" 만 가정. 그러나 실제 통합 허브에는
+    외부 → 우리 콜백/푸시도 흔함:
+      - 카카오 알림톡 발송 결과 콜백
+      - 금감원 점검 결과 통보
+      - 토스페이먼츠 webhook
+    이걸 별도 인터페이스로 등록·관제할 수 있게 방향 컬럼 도입.
+
+    - OUTBOUND : 우리가 외부를 호출 (기존 동작) — executor 가 능동 실행
+    - INBOUND  : 외부가 우리를 호출 — executor 능동 실행 불가, ingest API 로 결과 적재
+    """
+    OUTBOUND = "OUTBOUND"
+    INBOUND = "INBOUND"
+
+
 class InterfaceCategory(str, enum.Enum):
-    """기획서 1번 항목 — 통합 관제 대상 분류 (Phase B.12).
+    """기획서 1번 항목 — 통합 관제 대상 분류.
 
     "내부 핵심 시스템과 외부 기관(금감원, 제휴사 등) 간 다수의 인터페이스를
     단일 화면에서 제어" 라는 기획 의도를 시스템상 1급 시민으로 표현. 단순
@@ -50,10 +67,16 @@ class Interface(Base):
     organization: Mapped[str | None] = mapped_column(String(120), default=None, index=True)
 
     protocol: Mapped[ProtocolType] = mapped_column(Enum(ProtocolType), default=ProtocolType.REST)
-    # Phase B.12 — 통합 관제 대상 분류. 운영자가 의도적으로 선택. 기존 데이터는
+    # 통합 관제 대상 분류. 운영자가 의도적으로 선택. 기존 데이터는
     # 마이그레이션에서 EXTERNAL_PARTNER 로 시작 (안전한 기본값 — 외부로 가정).
     category: Mapped[InterfaceCategory] = mapped_column(
         Enum(InterfaceCategory), default=InterfaceCategory.EXTERNAL_PARTNER,
+        nullable=False, index=True,
+    )
+    # 호출 방향. 기본 OUTBOUND (기존 동작 유지).
+    # INBOUND 는 executor 가 능동 실행 안 함 — ingest API 로만 결과 적재.
+    direction: Mapped[InterfaceDirection] = mapped_column(
+        Enum(InterfaceDirection), default=InterfaceDirection.OUTBOUND,
         nullable=False, index=True,
     )
     endpoint: Mapped[str] = mapped_column(String(500))
@@ -73,7 +96,7 @@ class Interface(Base):
     response_ms_threshold: Mapped[int | None] = mapped_column(Integer, default=None)
     failure_rate_threshold: Mapped[float | None] = mapped_column(default=None)
 
-    # --- Phase B.7 알림 룰 -------------------------------------------------
+    # --- 알림 룰 -------------------------------------------------
     # muted_until: 이 시각까지 알림 발송 중단 (정기 점검 시간 등). null=음소거 X.
     #   incident 자체는 그대로 생성되어 기록은 남고, 대시보드/incidents 페이지의
     #   카운트도 갱신됨. "알림 시끄러움"만 끔.
@@ -84,7 +107,7 @@ class Interface(Base):
         JSON, default=lambda: ["in_app", "slack", "email"]
     )
 
-    # --- Phase B.9 호출 안정성 (재시도 + timeout) ---------------------------
+    # --- 호출 안정성 (재시도 + timeout) ---------------------------
     # timeout_seconds: 호출당 타임아웃. null 이면 시스템 기본(10s).
     #   외부 기관별로 응답 SLA 가 다름 — KIDI 는 보통 < 2s, 보험개발원은 5s+
     #   허용 같은 식으로 운영자 조정. httpx.AsyncClient(timeout=...) 에 그대로 전달.

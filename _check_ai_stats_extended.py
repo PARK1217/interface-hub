@@ -1,5 +1,4 @@
-"""Phase B.11 — AI 통계 컨텍스트 확장 검증.
-
+"""AI 통계 컨텍스트 확장 검증.
 build_stats_context 가:
   1. 어제/오늘 추이 섹션 포함
   2. 시간대별 실패 분포 Top 5 섹션 포함 (PG 한정)
@@ -48,11 +47,11 @@ def main() -> int:
         failures.append("config_context 섹션 누락")
 
     if failures:
-        print("[FAIL] Phase B.11 통계 컨텍스트 확장 검증 실패:")
+        print("[FAIL] 통계 컨텍스트 확장 검증 실패:")
         for f in failures:
             print("  -", f)
         return 1
-    print("[OK] Phase B.11 통계 컨텍스트 확장 — 모든 섹션 노출")
+    print("[OK] 통계 컨텍스트 확장 — 모든 섹션 노출")
     print("  * Top 10 + 평균응답 / 어제 vs 오늘 추이 / (PG) 시간대 분포 / 미해결 장애")
     print("\n--- 생성된 markdown 미리보기 (처음 800자) ---")
     print(md[:800])

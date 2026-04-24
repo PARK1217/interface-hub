@@ -1,5 +1,4 @@
-"""Phase B.1~B.4 통합 시나리오 검증.
-
+"""~B.4 통합 시나리오 검증.
 backend 컨테이너 외부에서 호출 (공통 로컬 작업 검증 패턴).
 서버는 docker compose 로 띄워둔 상태여야 함.
 
@@ -63,7 +62,7 @@ def main() -> int:
             failures.append(f"{name}: {e}")
             print(f"  ✗ {name}: {e}")
 
-    print("== Phase B.1~B.4 통합 시나리오 ==")
+    print("== ~B.4 통합 시나리오 ==")
 
     # 1) admin 로그인
     admin_token = login(ADMIN_USER, ADMIN_PW)["access_token"]
@@ -250,7 +249,7 @@ def main() -> int:
         for f in failures:
             print(f"   - {f}")
         return 1
-    print(f"✅ All Phase B.1~B.4 scenarios passed")
+    print(f"✅ All ~B.4 scenarios passed")
     return 0
 
 

@@ -1,5 +1,4 @@
-"""Phase B.7 알림 룰 시나리오 — 음소거 + 채널 화이트리스트.
-
+"""알림 룰 시나리오 — 음소거 + 채널 화이트리스트.
 전제:
 - backend 가동 중 (docker compose).
 - admin 시드 계정.
@@ -54,7 +53,7 @@ def main() -> int:
             failures.append(f"{name}: {e}")
             print(f"  ✗ {name}: {e}")
 
-    print("== Phase B.7 알림 룰 ==")
+    print("== 알림 룰 ==")
 
     admin_tok = login("admin", "admin1234")
     op_tok = login("operator", "op1234")
@@ -147,7 +146,7 @@ def main() -> int:
         for f in failures:
             print(f"   - {f}")
         return 1
-    print(f"✅ All Phase B.7 scenarios passed")
+    print(f"✅ All scenarios passed")
     return 0
 
 

@@ -1,5 +1,4 @@
-"""Phase B.9 — 외부 호출 재시도/backoff 검증.
-
+"""외부 호출 재시도/backoff 검증.
 executor._exec_with_retry 가 retry_max / retry_backoff_seconds 정책에 따라
 재시도하는지, AUTH/FORMAT 같은 비재시도 대상은 즉시 종료하는지, attempt_count
 가 정확히 기록되는지 확인.
@@ -106,11 +105,11 @@ async def main() -> int:
         failures.append(f"retry_max=0 은 1회만 호출. got attempts={attempts} count={call_count['n']}")
 
     if failures:
-        print("[FAIL] Phase B.9 재시도 정책 검증 실패:")
+        print("[FAIL] 재시도 정책 검증 실패:")
         for f in failures:
             print("  -", f)
         return 1
-    print("[OK] Phase B.9 재시도 정책 — 7개 시나리오 모두 통과")
+    print("[OK] 재시도 정책 — 7개 시나리오 모두 통과")
     print("  * 성공 시 1회 / 503 retry_max=2 → 3회 / 401 즉시 종료 / 3번째 성공 / backoff 시간")
     print("  * _is_retryable 분류 (TIMEOUT/5xx/FAILURE → 재시도, AUTH/FORMAT → 즉시 종료)")
     return 0

@@ -1,11 +1,11 @@
 """과거 장애 이력 기반 RAG — 멀티 프로바이더 LLM + TF-IDF 검색 + Redis 캐싱.
 
 흐름:
-  1. **캐시 조회** (Phase B.8): question_hash 로 Redis 1차 lookup → hit 면 즉시 반환
+  1. **캐시 조회**: question_hash 로 Redis 1차 lookup → hit 면 즉시 반환
   2. **검색**: TF-IDF char n-gram 으로 과거 incident Top-K
   3. **생성**: services/ai/llm.chat() 위임 (멀티 프로바이더)
   4. **Fallback**: 키 없거나 실패 → 템플릿 응답 + llm_error 동봉
-  5. **로깅** (Phase B.8): ai_query_logs 1행 기록 (popular questions / 본인 히스토리 용도)
+  5. **로깅**: ai_query_logs 1행 기록 (popular questions / 본인 히스토리 용도)
 """
 
 from __future__ import annotations
@@ -32,7 +32,7 @@ log = logging.getLogger("noahub.ai.rag")
 NO_MATCH_THRESHOLD = 0.05
 _NO_MATCH_THRESHOLD = NO_MATCH_THRESHOLD  # 내부 호환
 
-# Phase B.8.12 — 같은 질문의 분석 실패 이력이 이 시간 내에 있으면 재호출하지 않고
+# 같은 질문의 분석 실패 이력이 이 시간 내에 있으면 재호출하지 않고
 # 저장된 안내를 그대로 반환. 하루 지나면 인프라 상태가 바뀌었을 수 있으니 다시 허용.
 _FAILURE_REUSE_HOURS = 24
 
@@ -162,7 +162,7 @@ class RagService:
             lines.append(f"추가 후보: {len(cases) - 1}건 더 있음 (아래 카드 참조)")
         return "\n".join(lines)
 
-    # --- Phase B.8.12 실패 이력 재사용 ---------------------------------------
+    # --- 실패 이력 재사용 ---------------------------------------
     def _find_recent_failure(self, question_hash: str, *, intent: Intent) -> AiQueryLog | None:
         """같은 question_hash 의 최근 24h **환경 결함** 실패 로그 (사용자 입력 결함은
         DB 에 없으니 여기서 걸리지 않음 — 24h 가드는 환경 결함에만 의미 있음).
@@ -220,7 +220,7 @@ class RagService:
             repeated_failure=True,
         )
 
-    # --- 로깅 (Phase B.8) ----------------------------------------------------
+    # --- 로깅 ----------------------------------------------------
     def _log_query(
         self,
         *,
@@ -230,7 +230,7 @@ class RagService:
         actor: User | None,
         hit_cache: bool,
     ) -> None:
-        # Phase B.8.15 — 사용자 입력 결함 (empty_question / no_match) 은 DB 저장 안 함.
+        # 사용자 입력 결함 (empty_question / no_match) 은 DB 저장 안 함.
         # 같은 질문 재입력 시 매번 같은 결과라 로그 가치 없음, 히스토리 / popular 도
         # 자동 제외됨 (DB 에 없으니까). 환경 결함만 append-only 로 추적.
         outcome = result.get("outcome") or "success"
@@ -294,7 +294,7 @@ class RagService:
             "repeated_failure": repeated_failure,
         }
 
-    # --- Phase B.8.17 LLM fallback 체인 --------------------------------------
+    # --- LLM fallback 체인 --------------------------------------
     async def _call_llm(
         self, prompt: str, *, system: str | None = None,
     ) -> tuple[LLMResponse | LLMError, list[dict]]:
@@ -385,7 +385,7 @@ class RagService:
             question, provider=provider, model=model, top_k=top_k, intent=intent,
         )
 
-        # 0.5) Phase B.8.12 — 같은 질문의 최근 24h 실패 이력이 있으면 LLM/DB 호출
+        # 0.5) 같은 질문의 최근 24h 실패 이력이 있으면 LLM/DB 호출
         # 모두 생략하고 저장된 안내를 반환. 무관 / 너무 짧은 질문 반복 입력 방지.
         prev = self._find_recent_failure(qhash, intent=intent)
         if prev is not None:
@@ -546,7 +546,7 @@ class RagService:
                             result=res, actor=actor, hit_cache=False)
             return res
 
-        # no_match — Phase B.8.9 핵심 변경: LLM 호출 강행 안 함 (환각 답변 방지)
+        # no_match — 핵심 변경: LLM 호출 강행 안 함 (환각 답변 방지)
         if analysis_note and analysis_note["kind"] == "no_match":
             res = self._make_response(
                 mode="fallback", provider="fallback", model=None,
@@ -620,7 +620,7 @@ def llm_status() -> dict:
 
 
 def score_questions(db: Session, questions: list[str]) -> list[float]:
-    """여러 후보 질문의 Top-1 유사도를 일괄 계산 (Phase B.8.16).
+    """여러 후보 질문의 Top-1 유사도를 일괄 계산.
 
     /suggestions 가 생성한 후보 중 no_match 임계 미만인 것을 사전에 걸러내는 용도.
     TfidfVectorizer 를 한 번만 fit 하고 여러 query 를 transform — 개별 _retrieve

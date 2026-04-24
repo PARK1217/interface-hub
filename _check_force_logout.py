@@ -1,5 +1,4 @@
-"""Phase B.6 강제 로그아웃 / 토큰 무효화 시나리오.
-
+"""강제 로그아웃 / 토큰 무효화 시나리오.
 전제: docker compose 로 백엔드 가동 중. admin 시드 계정 존재.
 
 검증:
@@ -49,7 +48,7 @@ def main() -> int:
             failures.append(f"{name}: {e}")
             print(f"  ✗ {name}: {e}")
 
-    print("== Phase B.6 강제 로그아웃 ==")
+    print("== 강제 로그아웃 ==")
 
     state: dict = {}
 
@@ -152,7 +151,7 @@ def main() -> int:
         for f in failures:
             print(f"   - {f}")
         return 1
-    print(f"✅ All Phase B.6 scenarios passed")
+    print(f"✅ All scenarios passed")
     return 0
 
 

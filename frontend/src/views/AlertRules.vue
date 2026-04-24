@@ -3,7 +3,7 @@
     <div class="d-flex align-center mb-4">
       <h2 class="text-h5">알림 룰 (전역)</h2>
       <v-chip class="ml-3" size="small" color="primary" variant="tonal" prepend-icon="mdi-shield-cog-outline">
-        Phase B.10
+        전역 정책
       </v-chip>
       <v-spacer />
       <v-btn
@@ -28,7 +28,7 @@
     </div>
 
     <v-alert type="info" variant="tonal" density="compact" class="mb-4">
-      여기서 설정한 룰은 <strong>전역</strong>으로 적용됩니다. 인터페이스별 음소거(Phase B.7) 와는
+      여기서 설정한 룰은 <strong>전역</strong>으로 적용됩니다. 인터페이스별 음소거 와는
       별개이며, <strong>두 룰 모두 통과</strong>해야 알림이 발송됩니다 (AND).
       예) 인터페이스가 slack 만 허용 + 전역 warning 이 in_app+slack → 실제 발송 채널은 slack 만.
     </v-alert>

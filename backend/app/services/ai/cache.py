@@ -1,4 +1,4 @@
-"""AI 응답 Redis 캐싱 + 질의 로깅 (Phase B.8).
+"""AI 응답 Redis 캐싱 + 질의 로깅.
 
 설계:
 - 캐시 키: SHA256(normalized_question + provider + model + top_k). 정규화는

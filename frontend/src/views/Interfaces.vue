@@ -102,6 +102,28 @@
         density="comfortable"
         :row-props="rowProps"
       >
+        <template #item.direction="{ item }">
+          <v-chip
+            v-if="item.direction === 'INBOUND'"
+            size="x-small"
+            color="deep-purple"
+            variant="flat"
+            prepend-icon="mdi-arrow-left-bold-outline"
+            title="INBOUND — 외부가 우리를 호출 (webhook/콜백, ingest API 로 적재)"
+          >
+            IN
+          </v-chip>
+          <v-chip
+            v-else
+            size="x-small"
+            color="primary"
+            variant="tonal"
+            prepend-icon="mdi-arrow-right-bold-outline"
+            title="OUTBOUND — 우리가 외부 호출 (스케줄/수동 실행)"
+          >
+            OUT
+          </v-chip>
+        </template>
         <template #item.category="{ item }">
           <v-chip
             size="small"
@@ -155,7 +177,7 @@
             >
               일시중지
             </v-chip>
-            <!-- Phase B.7 음소거 칩 — 남은 시간 표시 + 즉시 해제 -->
+            <!-- 음소거 칩 — 남은 시간 표시 + 즉시 해제 -->
             <v-chip
               v-if="isMuted(item)"
               size="x-small"
@@ -170,17 +192,18 @@
         </template>
         <template #item.actions="{ item }">
           <template v-if="!item.deleted_at">
-            <!-- ▶ 실행: OPERATOR 이상 -->
+            <!-- ▶ 실행: OPERATOR 이상. INBOUND 는 능동 실행 불가라 비활성. -->
             <v-btn
               v-if="auth.canMutate"
               icon="mdi-play"
               variant="text"
               size="small"
               :loading="running === item.id"
-              title="실행"
+              :disabled="item.direction === 'INBOUND'"
+              :title="item.direction === 'INBOUND' ? 'INBOUND 인터페이스는 외부가 우리를 호출하는 구조라 능동 실행 불가 (ingest API 사용)' : '실행'"
               @click="run(item)"
             />
-            <!-- 🔕 음소거: OPERATOR 이상 (Phase B.7) -->
+            <!-- 🔕 음소거: OPERATOR 이상 -->
             <v-menu v-if="auth.canMutate" location="bottom end">
               <template #activator="{ props }">
                 <v-btn
@@ -311,6 +334,25 @@
           </v-row>
 
           <div class="text-overline text-medium-emphasis mb-2 mt-3">연결</div>
+          <v-card variant="outlined" rounded="lg" class="pa-3 mb-3">
+            <div class="text-caption text-medium-emphasis mb-2">호출 방향</div>
+            <v-radio-group v-model="form.direction" hide-details inline density="compact">
+              <v-radio value="OUTBOUND" color="primary">
+                <template #label>
+                  <v-icon icon="mdi-arrow-right-bold-outline" class="mr-1" />
+                  <strong class="mr-1">OUTBOUND</strong>
+                  <span class="text-caption text-medium-emphasis">— 우리가 외부 호출 (스케줄/수동 실행 가능)</span>
+                </template>
+              </v-radio>
+              <v-radio value="INBOUND" color="deep-purple" class="ml-4">
+                <template #label>
+                  <v-icon icon="mdi-arrow-left-bold-outline" class="mr-1" />
+                  <strong class="mr-1">INBOUND</strong>
+                  <span class="text-caption text-medium-emphasis">— 외부가 우리 호출 (webhook/콜백 — ingest API 만)</span>
+                </template>
+              </v-radio>
+            </v-radio-group>
+          </v-card>
           <v-row dense>
             <v-col cols="6" md="3">
               <v-select v-model="form.protocol" :items="['REST', 'SOAP', 'FTP', 'MQ', 'BATCH']" label="프로토콜" density="comfortable" variant="outlined" />
@@ -526,7 +568,7 @@
             </v-col>
           </v-row>
 
-          <div class="text-overline text-medium-emphasis mb-2 mt-4">호출 안정성 (Phase B.9)</div>
+          <div class="text-overline text-medium-emphasis mb-2 mt-4">호출 안정성</div>
           <v-card variant="outlined" rounded="lg" class="pa-3 mb-3">
             <div class="text-caption text-medium-emphasis mb-3">
               외부 기관 일시 장애 (5xx / timeout / 네트워크 끊김) 시 자동 재시도. 401·422 같이
@@ -578,7 +620,7 @@
             </v-row>
           </v-card>
 
-          <div class="text-overline text-medium-emphasis mb-2 mt-4">알림 채널 (Phase B.7)</div>
+          <div class="text-overline text-medium-emphasis mb-2 mt-4">알림 채널</div>
           <v-card variant="outlined" rounded="lg" class="pa-3 mb-2">
             <div class="text-caption text-medium-emphasis mb-2">
               장애 발생 시 어느 채널로 알림을 보낼지 선택. 모두 해제해도 incident 자체는 기록됨.
@@ -700,10 +742,16 @@
 :deep(tr.row-deleted td:last-child) {
   opacity: 1;
 }
+/* 토폴로지에서 드릴다운된 row 강조 */
+:deep(tr.row-focused) {
+  background-color: rgba(33, 150, 243, 0.12);
+  outline: 2px solid #2196f3;
+}
 </style>
 
 <script setup lang="ts">
 import { computed, onMounted, reactive, ref, watch } from 'vue';
+import { useRoute } from 'vue-router';
 import { Interfaces, type InterfaceItem } from '@/api/client';
 import { cronToLabel, formatDateTime, formatDateTimeShort } from '@/utils/format';
 import { useAuthStore } from '@/stores/auth';
@@ -746,7 +794,7 @@ const weekdayChoices = [
 
 const protocolOptions = ['REST', 'SOAP', 'FTP', 'MQ', 'BATCH'];
 
-// Phase B.12 — 통합 관제 분류 (기획서 1번 항목)
+// 통합 관제 분류 (기획서 1번 항목)
 const categoryOptions = [
   {
     value: 'INTERNAL_CORE',
@@ -796,6 +844,7 @@ const organizationOptions = computed(() =>
 
 const headers = [
   { title: 'ID', key: 'id', width: 60 },
+  { title: '방향', key: 'direction', width: 90, sortable: false },
   { title: '분류', key: 'category', width: 130 },
   { title: '이름', key: 'name' },
   { title: '기관', key: 'organization' },
@@ -813,7 +862,7 @@ const running = ref<number | null>(null);
 const dialog = ref(false);
 const snack = reactive({ show: false, text: '', color: 'success' });
 
-// Phase B.7 — 알림 음소거 / 채널 ----------------------------------------------
+// 알림 음소거 / 채널 ----------------------------------------------
 const muteOptions = [
   { minutes: 10, label: '10분' },
   { minutes: 30, label: '30분' },
@@ -1036,7 +1085,10 @@ async function load() {
 }
 
 function rowProps({ item }: { item: InterfaceItem }) {
-  return item.deleted_at ? { class: 'row-deleted' } : {};
+  const classes: string[] = [];
+  if (item.deleted_at) classes.push('row-deleted');
+  if (focusedId.value === item.id) classes.push('row-focused');
+  return classes.length ? { class: classes.join(' ') } : {};
 }
 
 function openCreate() {
@@ -1045,6 +1097,7 @@ function openCreate() {
     name: '',
     organization: '',
     category: 'EXTERNAL_PARTNER',
+    direction: 'OUTBOUND',
     protocol: 'REST',
     method: 'GET',
     endpoint: '',
@@ -1184,5 +1237,19 @@ async function run(item: InterfaceItem) {
   }
 }
 
-onMounted(load);
+// 토폴로지에서 ?focus=ID 로 진입하면 해당 row 강조
+const route = useRoute();
+const focusedId = ref<number | null>(null);
+onMounted(async () => {
+  const fp = Number(route.query.focus);
+  if (Number.isFinite(fp) && fp > 0) focusedId.value = fp;
+  await load();
+});
+watch(
+  () => route.query.focus,
+  (v) => {
+    const n = Number(v);
+    focusedId.value = Number.isFinite(n) && n > 0 ? n : null;
+  },
+);
 </script>

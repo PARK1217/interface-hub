@@ -9,7 +9,7 @@ from app.core.database import Base
 
 
 class AiQueryLog(Base):
-    """AI 분석 어시스턴트 질의 로그 (Phase B.8).
+    """AI 분석 어시스턴트 질의 로그.
 
     매 /ai/ask 호출마다 1행 기록. 용도:
     1. 자주 묻는 질문 통계 (popular questions chip 노출)
@@ -42,7 +42,7 @@ class AiQueryLog(Base):
     llm_error_kind: Mapped[str | None] = mapped_column(String(40), default=None, index=True)
     # 캐시 히트 여부
     hit_cache: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False, index=True)
-    # Phase B.8.11 — 분석 성공/실패 유형 (popular/history/suggestions 필터 + 중복 차단용)
+    # 분석 성공/실패 유형 (popular/history/suggestions 필터 + 중복 차단용)
     # "success" | "empty_question" | "no_history" | "no_match" | "scikit_missing" | "llm_failed"
     outcome: Mapped[str] = mapped_column(String(30), default="success", nullable=False, index=True)
 

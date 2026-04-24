@@ -1,6 +1,4 @@
 import json, urllib.request, urllib.error
-
-
 def login(u, p):
     req = urllib.request.Request(
         "http://localhost:8000/api/auth/login",

@@ -1,5 +1,4 @@
-"""Phase B.10 — 전역 알림 룰 검증.
-
+"""전역 알림 룰 검증.
 evaluate_global_rule 의 핵심 4 케이스:
   1. severity 별 채널 화이트리스트 정확히 적용
   2. quiet hours 자정 안 넘김 (start < end)
@@ -118,11 +117,11 @@ def main() -> int:
             failures.append("룰 미설정 시 quiet_now=False 여야 함")
 
     if failures:
-        print("[FAIL] Phase B.10 전역 알림 룰 검증 실패:")
+        print("[FAIL] 전역 알림 룰 검증 실패:")
         for f in failures:
             print("  -", f)
         return 1
-    print("[OK] Phase B.10 전역 알림 룰 — 7개 시나리오 모두 통과")
+    print("[OK] 전역 알림 룰 — 7개 시나리오 모두 통과")
     print("  * quiet hours 자정 안 넘김 / 자정 넘김 (22~8) / start==end 처리")
     print("  * severity 별 채널 라우팅 / critical skip 옵션 / 주말 silence / 룰 미설정 fallback")
     return 0

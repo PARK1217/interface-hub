@@ -189,7 +189,7 @@ const auth = useAuthStore();
 const route = useRoute();
 const router = useRouter();
 
-// Phase B.11 — AI 분석에서 ?focus=ID 로 들어왔을 때 해당 row 강조 + auto-open
+// AI 분석에서 ?focus=ID 로 들어왔을 때 해당 row 강조 + auto-open
 const focusedId = ref<number | null>(null);
 const focusedRowExists = computed(
   () => focusedId.value != null && rows.value.some((r) => r.id === focusedId.value),

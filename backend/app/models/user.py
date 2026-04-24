@@ -37,23 +37,22 @@ class User(Base):
     # 계정 비활성화 (soft disable). 행은 유지 — audit_logs FK 무결성 위해 hard delete 안 함.
     disabled_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), default=None, index=True)
 
-    # --- Phase B.1 로그인 실패 lockout -------------------------------------
+    # --- 로그인 실패 lockout -------------------------------------
     # 연속 실패 횟수 (성공 시 0 으로 리셋). 임계치 (settings.lockout_threshold)
     # 도달 시 locked_until 에 해제 시각 기록 → 그 전까지 로그인 불가.
     failed_login_count: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
     locked_until: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), default=None)
 
-    # --- Phase B.4 최초/관리자 발급 비밀번호 강제 변경 ---------------------
+    # --- 최초/관리자 발급 비밀번호 강제 변경 ---------------------
     # True 면 로그인은 되지만 다른 화면 진입 전 비밀번호 변경 강제.
     # 관리자가 user.create / reset_password 할 때 자동 True, 본인이
     # change-password 완료 시 False.
     must_change_password: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
 
-    # --- Phase B.6 세션 버전 (강제 로그아웃 / 토큰 무효화) ----------------
+    # --- 세션 버전 (강제 로그아웃 / 토큰 무효화) ----------------
     # 모든 JWT 페이로드에 "sv": session_version 을 박아 발급. 토큰 검증 시
     # payload.sv != user.session_version 이면 무효. 본인 로그아웃 / ADMIN 강제
     # 로그아웃 / 비밀번호 변경 시 +1 → 기존 활성 세션 일괄 종료 (다른 탭 포함).
-    #
     # 시각 비교 (tokens_invalid_before) 대신 카운터를 쓰는 이유: JWT iat 는 초
     # 단위라 같은 초에 발급된 두 토큰을 시각 비교로는 구분 못 함 (race).
     # 카운터는 정수 동등 비교라 race 없음 + 블랙리스트 테이블/cleanup cron 불필요.

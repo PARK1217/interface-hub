@@ -151,7 +151,7 @@ GitHub Actions 가 push/PR 마다:
   - 관리자 발급 임시 비밀번호 / `reset-password` 시 `must_change_password=True` → 첫 로그인 강제 변경 다이얼로그
   - 로그인 성공/실패/잠금/해제/비밀번호 변경 모두 `audit_logs` 자동 기록
   - 임계치는 `LOCKOUT_THRESHOLD` / `LOCKOUT_MINUTES` / `PASSWORD_MIN_LENGTH` / `PASSWORD_REQUIRE_COMPLEXITY` env 로 조정
-- **세션 무효화 (Phase B.6)** — JWT 가 stateless 임에도 즉시 폐기 가능
+- **세션 무효화** — JWT 가 stateless 임에도 즉시 폐기 가능
   - `users.session_version` 카운터 + JWT payload `sv` 비교 → 불일치 시 401 (블랙리스트 테이블/cleanup cron 불필요)
   - `/auth/logout` 본인 모든 활성 세션 종료 (다른 탭 포함), `/users/{id}/force-logout` (ADMIN) 강제 폐기 — 토큰 탈취·퇴사·권한 회수 시 즉시 격리
   - 비밀번호 변경 시 자동 +1 → 옛 토큰 무효화, 응답에 새 토큰 동봉 (UX 끊김 없음)
