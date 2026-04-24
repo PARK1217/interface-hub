@@ -48,6 +48,9 @@
             </v-list-item-subtitle>
           </v-list-item>
           <v-divider />
+          <v-list-item prepend-icon="mdi-lock-reset" @click="pwDialog = true">
+            <v-list-item-title>비밀번호 변경</v-list-item-title>
+          </v-list-item>
           <v-list-item prepend-icon="mdi-logout" @click="onLogout">
             <v-list-item-title>로그아웃</v-list-item-title>
           </v-list-item>
@@ -60,20 +63,48 @@
         <router-view />
       </v-container>
     </v-main>
+
+    <!--
+      Phase B.4 강제 비밀번호 변경 모달.
+      auth.mustChangePassword=true 면 forced 모드로 자동 노출 + 닫기 차단.
+      AppBar 메뉴의 "비밀번호 변경" 클릭 시에는 일반 모드로 노출.
+    -->
+    <ChangePasswordDialog
+      v-model="pwDialog"
+      :forced="auth.mustChangePassword"
+      @changed="onPasswordChanged"
+    />
   </v-app>
 </template>
 
 <script setup lang="ts">
-import { computed, onMounted, ref } from 'vue';
+import { computed, onMounted, ref, watch } from 'vue';
 import { useRoute, useRouter } from 'vue-router';
 import { subscribe } from '@/api/socket';
 import { useAuthStore } from '@/stores/auth';
 import { formatDateTimeShort } from '@/utils/format';
+import ChangePasswordDialog from '@/components/ChangePasswordDialog.vue';
 
 const route = useRoute();
 const router = useRouter();
 const auth = useAuthStore();
 const connected = ref(false);
+const pwDialog = ref(false);
+
+// Phase B.4 — 강제 비밀번호 변경이 필요하면 다이얼로그 자동 노출.
+// 로그인 직후 / 페이지 진입 시 모두 동작하도록 watch + onMounted 둘 다.
+watch(
+  () => auth.mustChangePassword,
+  (need) => {
+    if (need) pwDialog.value = true;
+  },
+  { immediate: true },
+);
+
+function onPasswordChanged() {
+  // 강제 변경 완료 → 다이얼로그 닫고 일반 사용 가능 (auth.user.must_change_password = false)
+  pwDialog.value = false;
+}
 
 const routes = [
   { path: '/dashboard', title: '대시보드', icon: 'mdi-view-dashboard' },
@@ -113,11 +144,14 @@ async function onLogout() {
   router.push('/login');
 }
 
-onMounted(() => {
+onMounted(async () => {
   subscribe(() => {
     connected.value = true;
   });
   setTimeout(() => (connected.value = true), 500);
+  // localStorage 의 사용자 정보가 stale 일 수 있어 (다른 탭에서 비번 변경 등) 한 번 동기화
+  // — refreshMe 가 401 이면 자동 로그아웃 처리됨
+  if (auth.isAuthenticated) await auth.refreshMe();
 });
 </script>
 

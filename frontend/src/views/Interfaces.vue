@@ -619,7 +619,7 @@ const running = ref<number | null>(null);
 const dialog = ref(false);
 const snack = reactive({ show: false, text: '', color: 'success' });
 
-const form = reactive<Partial<InterfaceItem> & { auth_secret?: string }>({
+const form = reactive<Partial<InterfaceItem> & { auth_secret?: string; secret_change_reason?: string }>({
   protocol: 'REST',
   method: 'GET',
   auth_type: 'NONE',

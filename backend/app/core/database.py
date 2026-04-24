@@ -66,6 +66,11 @@ _DEMO_MIGRATIONS: list[str] = [
     # Phase A: call_logs 에 행위자 추적 (manual/reprocess/ingest 시 누가 했는지)
     "ALTER TABLE call_logs ADD COLUMN IF NOT EXISTS actor_user_id INTEGER REFERENCES users(id) ON DELETE SET NULL",
     "CREATE INDEX IF NOT EXISTS ix_call_logs_actor_user_id ON call_logs(actor_user_id)",
+    # Phase B.1 계정 lockout (연속 실패 + 잠금 해제 시각)
+    "ALTER TABLE users ADD COLUMN IF NOT EXISTS failed_login_count INTEGER NOT NULL DEFAULT 0",
+    "ALTER TABLE users ADD COLUMN IF NOT EXISTS locked_until TIMESTAMPTZ",
+    # Phase B.4 강제 비밀번호 변경 플래그
+    "ALTER TABLE users ADD COLUMN IF NOT EXISTS must_change_password BOOLEAN NOT NULL DEFAULT FALSE",
 ]
 
 

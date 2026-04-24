@@ -187,6 +187,7 @@ async function onSubmit() {
     const target = (route.query.next as string) || '/dashboard';
     router.push(target);
   } catch (e: any) {
+    // 423 LOCKED 는 401 과 별도 — 백엔드 detail 메시지에 잠금 안내 포함
     errMsg.value = e?.response?.data?.detail ?? '로그인 실패';
   } finally {
     submitting.value = false;

@@ -16,13 +16,14 @@ api.interceptors.request.use((cfg) => {
 });
 
 // 401 응답 시 자동 로그아웃 + 로그인 페이지 이동.
-// (auth/login 자체의 401 은 폼 에러로 표시해야 하므로 제외)
+// (auth/login 자체의 401/423 은 폼 에러로 표시해야 하므로 제외)
 api.interceptors.response.use(
   (r) => r,
   (err) => {
     const status = err?.response?.status;
     const url = err?.config?.url ?? '';
-    if (status === 401 && !url.includes('/auth/login')) {
+    const isLoginCall = url.includes('/auth/login');
+    if (status === 401 && !isLoginCall) {
       localStorage.removeItem('noahub_token');
       localStorage.removeItem('noahub_user');
       localStorage.removeItem('noahub_expires');
@@ -263,6 +264,9 @@ export interface UserItem {
   role: 'ADMIN' | 'OPERATOR' | 'VIEWER';
   last_login_at: string | null;
   disabled_at: string | null;
+  failed_login_count: number;
+  locked_until: string | null;
+  must_change_password: boolean;
   created_at: string;
 }
 
@@ -274,8 +278,14 @@ export const Users = {
     api.patch<UserItem>(`/users/${id}`, payload),
   disable: (id: number) => api.post<UserItem>(`/users/${id}/disable`),
   enable: (id: number) => api.post<UserItem>(`/users/${id}/enable`),
+  unlock: (id: number) => api.post<UserItem>(`/users/${id}/unlock`),
   resetPassword: (id: number) =>
     api.post<{ user_id: number; username: string; temp_password: string }>(`/users/${id}/reset-password`),
+};
+
+export const Auth = {
+  changePassword: (current_password: string, new_password: string) =>
+    api.post('/auth/change-password', { current_password, new_password }),
 };
 
 export interface AuditLogItem {

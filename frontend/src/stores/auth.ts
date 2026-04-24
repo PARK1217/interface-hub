@@ -10,6 +10,9 @@ export interface AuthUser {
   email: string | null;
   role: Role;
   last_login_at: string | null;
+  must_change_password?: boolean;
+  failed_login_count?: number;
+  locked_until?: string | null;
   created_at: string;
 }
 
@@ -32,6 +35,8 @@ export const useAuthStore = defineStore('auth', {
     isAdmin: (s) => s.user?.role === 'ADMIN',
     isOperator: (s) => s.user?.role === 'OPERATOR' || s.user?.role === 'ADMIN',
     canMutate: (s) => s.user?.role === 'OPERATOR' || s.user?.role === 'ADMIN',
+    // Phase B.4 — 강제 비밀번호 변경 필요 여부
+    mustChangePassword: (s) => !!s.user?.must_change_password,
   },
 
   actions: {
@@ -68,6 +73,12 @@ export const useAuthStore = defineStore('auth', {
         // 토큰 만료/무효 → 로그아웃 상태로
         await this.logout();
       }
+    },
+
+    // Phase B.3/B.4 — 비밀번호 변경 후 must_change_password 등 사용자 상태 동기화
+    setUser(u: AuthUser) {
+      this.user = u;
+      localStorage.setItem('noahub_user', JSON.stringify(u));
     },
   },
 });

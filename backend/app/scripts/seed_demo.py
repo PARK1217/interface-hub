@@ -651,6 +651,10 @@ def main() -> None:
                 existing.role = spec["role"]
                 existing.full_name = spec["full_name"]
                 existing.disabled_at = None
+                # 데모 계정은 평가 편의상 잠금/강제변경 해제 (시드 재실행 시도 동일)
+                existing.failed_login_count = 0
+                existing.locked_until = None
+                existing.must_change_password = False
             else:
                 db.add(
                     User(
@@ -658,6 +662,7 @@ def main() -> None:
                         password_hash=hash_password(spec["password"]),
                         full_name=spec["full_name"],
                         role=spec["role"],
+                        must_change_password=False,
                     )
                 )
         db.commit()

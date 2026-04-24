@@ -14,6 +14,8 @@
     <v-alert type="info" variant="tonal" density="compact" class="mb-4">
       신규 사용자 생성·비밀번호 초기화·비활성화·권한 변경 모두 감사 로그에 자동 기록.
       자기 자신의 권한 변경 / 자기 계정 비활성화는 lockout 방지를 위해 차단됩니다.
+      비밀번호 정책: <strong>8자 이상 + 영문·숫자·특수문자 모두 포함</strong> ·
+      연속 5회 실패 시 30분 잠금 (관리자가 🔓 버튼으로 즉시 해제 가능).
     </v-alert>
 
     <v-card>
@@ -22,24 +24,55 @@
           <v-chip size="small" :color="roleColor(item.role)">{{ item.role }}</v-chip>
         </template>
         <template #item.status="{ item }">
-          <v-chip
-            v-if="item.disabled_at"
-            size="small"
-            color="grey"
-            variant="tonal"
-            prepend-icon="mdi-account-off-outline"
-          >
-            비활성
-          </v-chip>
-          <v-chip
-            v-else
-            size="small"
-            color="success"
-            variant="tonal"
-            prepend-icon="mdi-check-circle-outline"
-          >
-            활성
-          </v-chip>
+          <div class="d-flex align-center" style="gap: 4px; flex-wrap: wrap">
+            <v-chip
+              v-if="item.disabled_at"
+              size="small"
+              color="grey"
+              variant="tonal"
+              prepend-icon="mdi-account-off-outline"
+            >
+              비활성
+            </v-chip>
+            <v-chip
+              v-else
+              size="small"
+              color="success"
+              variant="tonal"
+              prepend-icon="mdi-check-circle-outline"
+            >
+              활성
+            </v-chip>
+            <v-chip
+              v-if="isLocked(item)"
+              size="x-small"
+              color="error"
+              variant="flat"
+              prepend-icon="mdi-lock-outline"
+              :title="lockedTitle(item)"
+            >
+              잠김
+            </v-chip>
+            <v-chip
+              v-else-if="(item.failed_login_count ?? 0) > 0"
+              size="x-small"
+              color="warning"
+              variant="tonal"
+              :title="`연속 실패 ${item.failed_login_count}회`"
+            >
+              실패 {{ item.failed_login_count }}
+            </v-chip>
+            <v-chip
+              v-if="item.must_change_password"
+              size="x-small"
+              color="warning"
+              variant="tonal"
+              prepend-icon="mdi-key-alert-outline"
+              title="첫 로그인 시 비밀번호 변경 강제"
+            >
+              변경필요
+            </v-chip>
+          </div>
         </template>
         <template #item.last_login_at="{ item }">
           <span class="text-caption">{{ formatDateTime(item.last_login_at) || '-' }}</span>
@@ -51,6 +84,15 @@
             variant="text"
             title="권한·정보 수정"
             @click="openEdit(item)"
+          />
+          <v-btn
+            v-if="isLocked(item) || (item.failed_login_count ?? 0) > 0"
+            icon="mdi-lock-open-variant-outline"
+            size="x-small"
+            variant="text"
+            color="error"
+            title="잠금 해제 (실패 카운터 리셋)"
+            @click="unlock(item)"
           />
           <v-btn
             icon="mdi-key-variant"
@@ -104,7 +146,7 @@
             type="password"
             density="comfortable"
             variant="outlined"
-            hint="사용자 첫 로그인 후 변경 권장"
+            hint="8자 이상 + 영문·숫자·특수문자 모두 포함 — 사용자 첫 로그인 시 자동으로 변경 화면이 뜹니다."
             persistent-hint
           />
         </v-card-text>
@@ -195,7 +237,7 @@ const headers = [
   { title: '역할', key: 'role', width: 110 },
   { title: '상태', key: 'status', width: 100 },
   { title: '마지막 로그인', key: 'last_login_at', width: 170 },
-  { title: '', key: 'actions', sortable: false, align: 'end' as const, width: 160 },
+  { title: '', key: 'actions', sortable: false, align: 'end' as const, width: 200 },
 ];
 
 const rows = ref<UserItem[]>([]);
@@ -292,6 +334,30 @@ async function toggleEnable(item: UserItem, enable: boolean) {
     await load();
   } catch (e: any) {
     notify(e?.response?.data?.detail ?? `${verb} 실패`, 'error');
+  }
+}
+
+function isLocked(item: UserItem): boolean {
+  if (!item.locked_until) return false;
+  return new Date(item.locked_until).getTime() > Date.now();
+}
+
+function lockedTitle(item: UserItem): string {
+  if (!item.locked_until) return '';
+  const ms = new Date(item.locked_until).getTime() - Date.now();
+  if (ms <= 0) return '';
+  const min = Math.ceil(ms / 60000);
+  return `약 ${min}분 후 자동 해제 (또는 🔓 클릭으로 즉시 해제)`;
+}
+
+async function unlock(item: UserItem) {
+  if (!confirm(`'${item.username}' 계정의 잠금을 해제하고 실패 카운터를 리셋할까요?`)) return;
+  try {
+    await Users.unlock(item.id);
+    notify(`${item.username} 잠금 해제됨`);
+    await load();
+  } catch (e: any) {
+    notify(e?.response?.data?.detail ?? '잠금 해제 실패', 'error');
   }
 }
 

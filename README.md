@@ -145,6 +145,12 @@ GitHub Actions 가 push/PR 마다:
 - `auth_secret` 컬럼은 평문이 아니라 **AES-GCM(256-bit) 암호화 후 base64** 로 저장 (`app/core/security.py`)
 - 운영 배포 시 반드시 `SECRET_KEY` 를 `python -c "import os,base64;print(base64.b64encode(os.urandom(32)).decode())"` 로 새로 생성
 - `INGEST_API_KEY` 설정하면 Ingest API 가 헤더 검증 (미설정 시 open)
+- **계정 보안 (금감원 전자금융감독규정 권고)**
+  - 비밀번호 정책: 8자 이상 + 영문·숫자·특수문자 모두 포함, 사용자명·직전과 동일 금지
+  - 5회 연속 로그인 실패 시 30분 자동 잠금 (HTTP 423 LOCKED), ADMIN 즉시 해제 가능
+  - 관리자 발급 임시 비밀번호 / `reset-password` 시 `must_change_password=True` → 첫 로그인 강제 변경 다이얼로그
+  - 로그인 성공/실패/잠금/해제/비밀번호 변경 모두 `audit_logs` 자동 기록
+  - 임계치는 `LOCKOUT_THRESHOLD` / `LOCKOUT_MINUTES` / `PASSWORD_MIN_LENGTH` / `PASSWORD_REQUIRE_COMPLEXITY` env 로 조정
 
 ## Contact
 박수산 · fasosan@gmail.com

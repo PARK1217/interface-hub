@@ -56,6 +56,15 @@ class Settings(BaseSettings):
     jwt_algorithm: str = "HS256"
     jwt_ttl_minutes: int = 240  # 4시간
 
+    # Phase B.1 계정 lockout — 금감원 전자금융감독규정 권고
+    # N회 연속 실패 시 M분간 잠금. 0 으로 두면 lockout 비활성.
+    lockout_threshold: int = 5
+    lockout_minutes: int = 30
+
+    # Phase B.2 비밀번호 정책 — 금감원 권고 (8자 이상 + 3종 조합)
+    password_min_length: int = 8
+    password_require_complexity: bool = True  # 영문/숫자/특수문자 중 3종
+
     cors_origins: list[str] = ["http://localhost:5173", "http://127.0.0.1:5173"]
 
 
