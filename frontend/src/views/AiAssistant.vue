@@ -30,39 +30,62 @@
       HuggingFace/OpenAI) 를 채우면 자동으로 LLM 모드로 전환됩니다.
     </v-alert>
 
-    <!-- LLM 호출 실패 사유 (Phase B.7) — provider/status/message + 본문 발췌 -->
+    <!-- 검색·분석 단계 사유 (no_history / no_match / empty_question / scikit_missing) -->
     <v-alert
-      v-else-if="lastMode === 'fallback' && llmError"
-      type="warning"
+      v-if="analysisNote"
+      :type="analysisNote.kind === 'no_match' ? 'info' : 'warning'"
+      variant="tonal"
+      density="compact"
+      class="mb-3"
+    >
+      <div class="d-flex align-start">
+        <v-icon :icon="analysisIcon(analysisNote.kind)" class="mr-2 mt-1" />
+        <div style="flex: 1">
+          <div class="text-subtitle-2">{{ analysisNote.title }}</div>
+          <div class="text-body-2 mt-1">{{ analysisNote.detail }}</div>
+          <div class="text-caption mt-1" style="opacity: 0.85">
+            <v-icon icon="mdi-lightbulb-outline" size="x-small" class="mr-1" />
+            <strong>권장:</strong> {{ analysisNote.suggestion }}
+          </div>
+        </div>
+      </div>
+    </v-alert>
+
+    <!-- LLM 호출 단계 실패 사유 — title / detail / suggestion 3단 -->
+    <v-alert
+      v-if="llmError"
+      :type="llmErrorAlertType(llmError.kind)"
       variant="tonal"
       density="compact"
       class="mb-4"
     >
       <div class="d-flex align-start">
-        <v-icon icon="mdi-robot-confused-outline" class="mr-2 mt-1" />
+        <v-icon :icon="llmErrorIcon(llmError.kind)" class="mr-2 mt-1" />
         <div style="flex: 1">
-          <div class="text-subtitle-2">LLM 호출 실패 — fallback 응답으로 대체</div>
-          <div class="text-body-2 mt-1">
-            <strong>{{ llmError.provider }}</strong>
+          <div class="text-subtitle-2 d-flex align-center">
+            <span>{{ llmError.title }}</span>
             <v-chip
               v-if="llmError.status"
               size="x-small"
               variant="flat"
               :color="llmError.status >= 500 ? 'error' : 'warning'"
-              class="mx-2"
+              class="ml-2"
             >
               HTTP {{ llmError.status }}
             </v-chip>
             <v-chip
-              v-else
               size="x-small"
               variant="flat"
               color="grey-darken-1"
-              class="mx-2"
+              class="ml-2"
             >
-              {{ kindLabel(llmError.kind) }}
+              {{ llmError.provider }} · {{ kindLabel(llmError.kind) }}
             </v-chip>
-            {{ llmError.message }}
+          </div>
+          <div class="text-body-2 mt-1">{{ llmError.detail }}</div>
+          <div class="text-caption mt-1" style="opacity: 0.85">
+            <v-icon icon="mdi-lightbulb-outline" size="x-small" class="mr-1" />
+            <strong>권장 조치:</strong> {{ llmError.suggestion }}
           </div>
           <div v-if="llmError.body_excerpt" class="mt-2">
             <v-expansion-panels flat variant="accordion">
@@ -143,11 +166,20 @@
         </v-card>
 
         <v-card v-if="answer" class="mb-4">
-          <v-card-title class="d-flex align-center">
+          <v-card-title class="d-flex align-center" style="flex-wrap: wrap; gap: 6px">
             <span>분석 결과</span>
             <v-chip
+              v-if="lastIntent && lastIntent !== 'general'"
+              size="x-small"
+              :color="intentColor(lastIntent)"
+              variant="flat"
+              :prepend-icon="intentIcon(lastIntent)"
+              :title="intentTooltip(lastIntent)"
+            >
+              {{ intentLabel(lastIntent) }}
+            </v-chip>
+            <v-chip
               v-if="lastMode"
-              class="ml-3"
               size="x-small"
               :color="lastMode === 'llm' ? 'success' : 'info'"
             >
@@ -155,7 +187,6 @@
             </v-chip>
             <v-chip
               v-if="lastCached"
-              class="ml-2"
               size="x-small"
               color="amber-darken-2"
               variant="flat"
@@ -164,7 +195,38 @@
             >
               cached
             </v-chip>
+            <v-chip
+              v-if="lastRepeated"
+              size="x-small"
+              color="grey-darken-2"
+              variant="flat"
+              prepend-icon="mdi-history"
+              title="이 질문은 24시간 안에 이미 분석 불가로 판정됨 — LLM/DB 호출 생략"
+            >
+              repeated
+            </v-chip>
+            <!-- Phase B.8.17 — fallback 체인이 쓰인 경우 표시 -->
+            <v-chip
+              v-if="llmAttempts.length && lastMode === 'llm'"
+              size="x-small"
+              color="orange-darken-2"
+              variant="flat"
+              prepend-icon="mdi-swap-horizontal"
+              :title="fallbackChainTooltip"
+            >
+              fallback · {{ llmAttempts.length }}건 복구
+            </v-chip>
           </v-card-title>
+
+          <!-- 체인 상세 — 어느 프로바이더가 왜 실패했는지 투명하게 노출 -->
+          <v-card-subtitle v-if="llmAttempts.length && lastMode === 'llm'" class="pt-0">
+            <v-icon icon="mdi-information-outline" size="x-small" class="mr-1" />
+            <span v-for="(a, i) in llmAttempts" :key="i" class="text-caption">
+              <strong>{{ a.provider }}</strong> ({{ a.status ? `HTTP ${a.status}` : kindLabel(a.kind) }})
+              <v-icon icon="mdi-arrow-right" size="x-small" class="mx-1" />
+            </span>
+            <strong class="text-success">{{ lastProvider }}</strong> 성공
+          </v-card-subtitle>
           <v-card-text style="white-space: pre-wrap">{{ answer }}</v-card-text>
         </v-card>
 
@@ -191,6 +253,16 @@
             <v-icon icon="mdi-history" class="mr-2" />
             <span class="text-subtitle-1">내 질의 이력</span>
             <v-spacer />
+            <v-switch
+              v-model="historyIncludeFailed"
+              label="실패 포함"
+              hide-details
+              density="compact"
+              color="warning"
+              class="mr-2"
+              style="flex: 0"
+              @update:model-value="loadHistory"
+            />
             <v-btn icon="mdi-refresh" size="x-small" variant="text" @click="loadHistory" />
           </v-card-title>
           <v-card-text v-if="!history.length" class="text-center text-medium-emphasis">
@@ -211,6 +283,17 @@
               <template #subtitle>
                 <div class="d-flex align-center" style="gap: 4px; flex-wrap: wrap">
                   <v-chip
+                    v-if="h.outcome && h.outcome !== 'success'"
+                    size="x-small"
+                    color="grey-darken-1"
+                    variant="flat"
+                    prepend-icon="mdi-close-circle-outline"
+                    :title="`분석 불가 사유: ${h.outcome}`"
+                  >
+                    {{ outcomeLabel(h.outcome) }}
+                  </v-chip>
+                  <v-chip
+                    v-else
                     size="x-small"
                     :color="h.mode === 'llm' ? 'success' : 'info'"
                     variant="tonal"
@@ -250,16 +333,33 @@
 </template>
 
 <script setup lang="ts">
-import { onMounted, reactive, ref } from 'vue';
+import { computed, onMounted, reactive, ref } from 'vue';
 import { AI, type AiHistoryItem, type AiSuggestion } from '@/api/client';
 import { formatDateTimeShort } from '@/utils/format';
 
 interface LLMErrorPayload {
   kind: string;
   provider: string;
+  title: string;
+  detail: string;
+  suggestion: string;
   message: string;
   status?: number | null;
   body_excerpt?: string | null;
+}
+
+interface AnalysisNotePayload {
+  kind: 'no_history' | 'no_match' | 'empty_question' | 'scikit_missing' | string;
+  title: string;
+  detail: string;
+  suggestion: string;
+}
+
+interface LLMAttempt {
+  provider: string;
+  kind: string;
+  status: number | null;
+  title: string;
 }
 
 const question = ref('');
@@ -268,7 +368,12 @@ const cases = ref<{ incident_id: number; type: string; content: string; score: n
 const lastMode = ref<'llm' | 'fallback' | null>(null);
 const lastProvider = ref<string | null>(null);
 const lastCached = ref(false);
+const lastIntent = ref<string | null>(null);
+const lastRepeated = ref(false);
+const historyIncludeFailed = ref(false);
 const llmError = ref<LLMErrorPayload | null>(null);
+const llmAttempts = ref<LLMAttempt[]>([]);
+const analysisNote = ref<AnalysisNotePayload | null>(null);
 const loading = ref(false);
 const snack = reactive({ show: false, text: '', color: 'error' });
 
@@ -296,9 +401,28 @@ async function loadSuggestions() {
 
 async function loadHistory() {
   try {
-    history.value = (await AI.myHistory(20)).data;
+    history.value = (await AI.myHistory(20, historyIncludeFailed.value)).data;
   } catch {
     history.value = [];
+  }
+}
+
+const fallbackChainTooltip = computed(() => {
+  if (!llmAttempts.value.length) return '';
+  const steps = llmAttempts.value.map(a =>
+    `${a.provider} ${a.status ? 'HTTP ' + a.status : a.kind}`
+  );
+  return `체인: ${steps.join(' → ')} → ${lastProvider.value} 성공`;
+});
+
+function outcomeLabel(outcome: string): string {
+  switch (outcome) {
+    case 'empty_question': return '너무 짧음';
+    case 'no_history': return '과거 사례 없음';
+    case 'no_match': return '유사 사례 없음';
+    case 'scikit_missing': return '엔진 미설치';
+    case 'llm_failed': return 'LLM 실패';
+    default: return outcome;
   }
 }
 
@@ -327,14 +451,93 @@ function suggestionIcon(src: string): string {
 
 function kindLabel(kind: string): string {
   switch (kind) {
+    // 설정 오류
+    case 'not_configured': return '설정 누락';
+    case 'auth_failed': return 'API 키 인증 실패';
+    case 'forbidden': return '모델 권한 부족';
+    case 'model_not_found': return '모델 미발견';
+    // 프로바이더 일시 장애
+    case 'rate_limited': return '요청 한도 초과';
+    case 'server_error': return '프로바이더 서버 오류';
+    case 'gateway_unreachable': return '프로바이더 게이트웨이 장애';
+    // 네트워크/응답
     case 'timeout': return '응답 시간 초과';
     case 'network': return '네트워크 오류';
-    case 'parse_error': return '응답 파싱 실패';
-    case 'not_configured': return '설정 누락';
+    case 'empty_response': return '빈 응답';
+    case 'parse_error': return '응답 형식 오류';
+    // 기타
     case 'unknown': return '알 수 없는 오류';
     case 'http_error': return 'HTTP 오류';
     default: return kind;
   }
+}
+
+// kind 별 alert 색상 — 설정 오류는 운영자가 즉시 해결 가능 (warning),
+// 프로바이더 일시 장애는 시간 지나면 회복 (info), 네트워크/파싱은 환경 문제 (error).
+function llmErrorAlertType(kind: string): 'error' | 'warning' | 'info' {
+  if (['not_configured'].includes(kind)) return 'info';
+  if (['auth_failed', 'forbidden', 'model_not_found'].includes(kind)) return 'warning';
+  if (['rate_limited', 'gateway_unreachable', 'server_error'].includes(kind)) return 'info';
+  if (['timeout', 'network', 'parse_error', 'empty_response'].includes(kind)) return 'error';
+  return 'warning';
+}
+
+function llmErrorIcon(kind: string): string {
+  if (['auth_failed', 'forbidden'].includes(kind)) return 'mdi-key-alert-outline';
+  if (kind === 'model_not_found') return 'mdi-help-rhombus-outline';
+  if (kind === 'rate_limited') return 'mdi-speedometer-slow';
+  if (['server_error', 'gateway_unreachable'].includes(kind)) return 'mdi-server-network-off';
+  if (kind === 'timeout') return 'mdi-clock-alert-outline';
+  if (kind === 'network') return 'mdi-lan-disconnect';
+  if (kind === 'empty_response') return 'mdi-comment-question-outline';
+  if (kind === 'parse_error') return 'mdi-code-tags';
+  if (kind === 'not_configured') return 'mdi-cog-off-outline';
+  return 'mdi-robot-confused-outline';
+}
+
+function intentLabel(intent: string): string {
+  switch (intent) {
+    case 'stats_query': return '운영 통계 분석';
+    case 'case_lookup': return '과거 사례 검색';
+    case 'config_query': return '설정 정보 조회';
+    default: return '일반 질의';
+  }
+}
+function intentIcon(intent: string): string {
+  switch (intent) {
+    case 'stats_query': return 'mdi-chart-bar';
+    case 'case_lookup': return 'mdi-book-search-outline';
+    case 'config_query': return 'mdi-cog-outline';
+    default: return 'mdi-robot-outline';
+  }
+}
+function intentColor(intent: string): string {
+  switch (intent) {
+    case 'stats_query': return 'deep-purple';
+    case 'case_lookup': return 'teal';
+    case 'config_query': return 'blue-grey';
+    default: return 'grey';
+  }
+}
+function intentTooltip(intent: string): string {
+  switch (intent) {
+    case 'stats_query':
+      return '운영 통계 질문으로 분류 — 최근 7일 인터페이스별 호출/실패율 데이터를 LLM 컨텍스트로 사용';
+    case 'case_lookup':
+      return '과거 사례 검색 질문 — resolved incident 텍스트 매칭';
+    case 'config_query':
+      return '설정 정보 질문 — 등록된 인터페이스 메타 정보를 LLM 컨텍스트로 사용';
+    default:
+      return '일반 질의';
+  }
+}
+
+function analysisIcon(kind: string): string {
+  if (kind === 'no_history') return 'mdi-database-off-outline';
+  if (kind === 'no_match') return 'mdi-magnify-close';
+  if (kind === 'empty_question') return 'mdi-comment-edit-outline';
+  if (kind === 'scikit_missing') return 'mdi-package-variant-remove';
+  return 'mdi-information-outline';
 }
 
 function describeAxiosError(e: any): string {
@@ -342,9 +545,16 @@ function describeAxiosError(e: any): string {
   const detail = e?.response?.data?.detail;
   if (detail) return detail;
   const status = e?.response?.status;
-  if (status) return `백엔드 오류 HTTP ${status}`;
-  if (e?.code === 'ECONNABORTED') return '백엔드 응답 시간 초과 (15초)';
-  if (e?.code === 'ERR_NETWORK') return '백엔드 네트워크 오류 — 서버 가동 상태 확인';
+  if (status === 502 || status === 503 || status === 504) {
+    return `백엔드 게이트웨이 응답 없음 (HTTP ${status}) — backend 컨테이너가 재기동 중이거나 다운됐을 수 있습니다. docker compose ps 확인.`;
+  }
+  if (status) return `백엔드 오류 HTTP ${status} — 서버 로그(docker compose logs backend) 확인 필요`;
+  if (e?.code === 'ECONNABORTED') {
+    return '백엔드 응답이 90초 안에 오지 않았습니다. LLM 호출이 60초 timeout 안에 끝나야 정상이며, 그보다 오래 걸리면 backend 가 멈춰있거나 외부망 차단된 상태일 수 있습니다.';
+  }
+  if (e?.code === 'ERR_NETWORK') {
+    return '백엔드에 연결할 수 없습니다 — backend 컨테이너 가동 상태 확인 (docker compose ps)';
+  }
   return e?.message || 'AI 분석 실패';
 }
 
@@ -357,7 +567,11 @@ async function ask() {
     lastMode.value = (res.data.mode as 'llm' | 'fallback') ?? 'llm';
     lastProvider.value = res.data.provider ?? null;
     lastCached.value = !!res.data.cached;
+    lastIntent.value = (res.data.intent as string | null) ?? 'general';
+    lastRepeated.value = !!res.data.repeated_failure;
     llmError.value = (res.data.llm_error as LLMErrorPayload | null) ?? null;
+    llmAttempts.value = (res.data.llm_attempts as LLMAttempt[] | undefined) ?? [];
+    analysisNote.value = (res.data.analysis_note as AnalysisNotePayload | null) ?? null;
     // 새 질문 후 히스토리 / 추천 모두 갱신 (popular 에 영향 가능)
     if (showHistory.value) await loadHistory();
     await loadSuggestions();

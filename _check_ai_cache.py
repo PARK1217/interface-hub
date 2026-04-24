@@ -42,9 +42,12 @@ def main() -> int:
     print("== Phase B.8 AI 캐싱·로깅·popular·history ==")
     tok = login()
 
-    # 매 실행 새 질문 — 이전 캐시와 충돌 없도록
+    # 매 실행 새 질문 — 이전 캐시와 충돌 없도록. seed incident 와 TF-IDF 매칭이
+    # 되어야 LLM 이 호출되고 캐시됨 (Phase B.8.9 부터 no_match 면 LLM 호출 안 함).
+    # 그래서 seed 사례의 키워드(신용정보원, 401, CB 조회) 를 포함하면서도 다른 세션과
+    # 겹치지 않게 timestamp 를 suffix 로 붙임.
     qid = int(time.time())
-    Q = f"테스트{qid} 인터페이스의 응답 지연 원인 분석해줘"
+    Q = f"신용정보원 CB조회 401 다발로 막혔어 어떻게 처리 #{qid}"
 
     def first_call_no_cache():
         r = requests.post(f"{BASE}/ai/ask", json={"question": Q}, headers=H(tok), timeout=60)

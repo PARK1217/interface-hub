@@ -231,6 +231,7 @@ export interface AiHistoryItem {
   provider: string | null;
   cached: boolean;
   llm_error_kind: string | null;
+  outcome: string;
   response_excerpt: string | null;
   asked_at: string;
 }
@@ -241,13 +242,20 @@ export interface AiSuggestion {
   interface_id?: number | null;
 }
 
+// AI 분석 요청은 LLM 호출 시간 (백엔드 httpx timeout 60s) + 검색·캐시 + 네트워크
+// 왕복까지 포함. 전역 axios timeout(15s)으로는 끊기기 일쑤라 별도 90초 적용.
+// 90초 안에도 응답 없으면 백엔드 LLM timeout(kind='timeout') 응답이 정상 도착함.
+const AI_ASK_TIMEOUT_MS = 90_000;
+
 export const AI = {
-  ask: (question: string, top_k = 3) => api.post('/ai/ask', { question, top_k }),
+  ask: (question: string, top_k = 3) =>
+    api.post('/ai/ask', { question, top_k }, { timeout: AI_ASK_TIMEOUT_MS }),
   anomaly: (interfaceId: number) => api.get(`/ai/anomaly/${interfaceId}`),
   status: () => api.get<{ configured: boolean; provider: string; model: string | null }>('/ai/status'),
   popular: (days = 14, limit = 10) =>
     api.get<PopularQuestion[]>('/ai/popular-questions', { params: { days, limit } }),
-  myHistory: (limit = 20) => api.get<AiHistoryItem[]>('/ai/my-history', { params: { limit } }),
+  myHistory: (limit = 20, include_failed = false) =>
+    api.get<AiHistoryItem[]>('/ai/my-history', { params: { limit, include_failed } }),
   suggestions: (limit = 4) => api.get<AiSuggestion[]>('/ai/suggestions', { params: { limit } }),
 };
 

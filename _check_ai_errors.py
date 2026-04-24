@@ -101,11 +101,16 @@ asyncio.run(go())
 """
         ], capture_output=True, text=True, timeout=30, encoding='utf-8', errors='replace')
         out_text = out.stdout + out.stderr
-        assert "KIND= http_error" in out_text, f"http_error 분류 실패: {out_text[:400]}"
+        # Phase: kind 가 http_error → auth_failed 로 세분화됨 (401 전용)
+        assert "KIND= auth_failed" in out_text, f"auth_failed 분류 실패: {out_text[:400]}"
         assert "STATUS= 401" in out_text, f"401 status 미반영: {out_text[:400]}"
-        assert "유효하지 않습니다" in out_text or "401" in out_text, f"메시지 부적절: {out_text[:400]}"
-        print(f"     → 401 인식, message: {[l for l in out_text.split(chr(10)) if l.startswith('MSG=')][0][:120]}")
-    step("잘못된 키 → LLMError(kind=http_error, status=401)", bad_key_returns_structured_error)
+        assert "키가 만료" in out_text or "유효하지 않" in out_text, f"메시지 부적절: {out_text[:400]}"
+        msg_lines = [l for l in out_text.split(chr(10)) if l.startswith('MSG=')]
+        if msg_lines:
+            print(f"     → 401 인식, message: {msg_lines[0][:120]}")
+        else:
+            print(f"     → 401 인식 (auth_failed)")
+    step("잘못된 키 → LLMError(kind=auth_failed, status=401)", bad_key_returns_structured_error)
 
     def fallback_provider_returns_not_configured():
         out = subprocess.run([

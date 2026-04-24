@@ -42,6 +42,9 @@ class AiQueryLog(Base):
     llm_error_kind: Mapped[str | None] = mapped_column(String(40), default=None, index=True)
     # 캐시 히트 여부
     hit_cache: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False, index=True)
+    # Phase B.8.11 — 분석 성공/실패 유형 (popular/history/suggestions 필터 + 중복 차단용)
+    # "success" | "empty_question" | "no_history" | "no_match" | "scikit_missing" | "llm_failed"
+    outcome: Mapped[str] = mapped_column(String(30), default="success", nullable=False, index=True)
 
     # 유사 사례 Top-1 점수 (있으면) — 검색 품질 모니터링용
     similarity_top: Mapped[float | None] = mapped_column(default=None)

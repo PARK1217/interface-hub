@@ -45,6 +45,11 @@ class Settings(BaseSettings):
     # Phase B.8 — AI 응답 Redis 캐싱 TTL (초). 0 으로 두면 캐시 비활성.
     ai_cache_ttl_seconds: int = 3600  # 1시간
 
+    # Phase B.8.17 — LLM 프로바이더 fallback 체인 (쉼표 구분).
+    # 예: "mistral,openai,anthropic" → 첫 번째 실패하면 두 번째, 그 다음 세 번째로.
+    # 빈 값이면 ai_provider + 키가 설정된 나머지 프로바이더 순으로 자동 구성.
+    ai_fallback_chain: str = ""
+
     # Detection thresholds (defaults; per-interface overrides live in DB)
     default_response_ms_threshold: int = 3000
     default_failure_rate_threshold: float = 0.10  # 10%

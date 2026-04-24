@@ -75,6 +75,7 @@ services:
       # missing 에러로 Vite 가 옛 번들을 서빙 → HMR 깨짐 → 새로고침 무의미.
       - /app/node_modules/.vite
     environment:
+      TZ: Asia/Seoul
       # Windows bind mount 에서 inotify 가 안 와서 HMR 이 무한정 안 갱신되는
       # 문제 회피. 폴링 방식으로 ~1초 간격 변경 감지.
       CHOKIDAR_USEPOLLING: "true"

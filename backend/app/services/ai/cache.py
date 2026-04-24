@@ -42,10 +42,22 @@ def normalize_question(q: str) -> str:
     return _WHITESPACE_RE.sub(" ", (q or "").strip().lower())
 
 
-def question_hash(q: str, *, provider: str, model: str | None, top_k: int) -> str:
-    """캐시 / 통계 그룹화 키. 동일 질문이라도 provider/model/top_k 다르면 별도."""
+def question_hash(
+    q: str,
+    *,
+    provider: str,
+    model: str | None,
+    top_k: int,
+    intent: str | None = None,
+) -> str:
+    """캐시 / 통계 그룹화 키.
+
+    질문을 먼저 정규화 한 뒤 provider/model/top_k/intent 와 조합. intent 접미사가
+    정규화 대상에 끼지 않도록 **반드시 별도 파라미터**로 전달할 것 (문자열에 붙여
+    넘기면 접미사 주변 공백이 정규화에 영향 받아 hash 가 엇갈림).
+    """
     norm = normalize_question(q)
-    raw = f"{norm}|{provider}|{model or ''}|{top_k}"
+    raw = f"{norm}|{provider}|{model or ''}|{top_k}|{intent or ''}"
     return hashlib.sha256(raw.encode("utf-8")).hexdigest()
 
 

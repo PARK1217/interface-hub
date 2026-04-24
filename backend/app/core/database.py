@@ -76,6 +76,9 @@ _DEMO_MIGRATIONS: list[str] = [
     # Phase B.7 알림 룰 (인터페이스별 음소거 + 채널 화이트리스트)
     "ALTER TABLE interfaces ADD COLUMN IF NOT EXISTS muted_until TIMESTAMPTZ",
     "ALTER TABLE interfaces ADD COLUMN IF NOT EXISTS alert_channels JSON DEFAULT '[\"in_app\",\"slack\",\"email\"]'",
+    # Phase B.8.11 — AI 질의 결과 분류 (popular/history/suggestions 필터 용)
+    "ALTER TABLE ai_query_logs ADD COLUMN IF NOT EXISTS outcome VARCHAR(30) NOT NULL DEFAULT 'success'",
+    "CREATE INDEX IF NOT EXISTS ix_ai_query_logs_outcome ON ai_query_logs(outcome)",
 ]
 
 
