@@ -19,16 +19,15 @@
     </div>
 
     <v-alert type="info" variant="tonal" density="compact" class="mb-4">
-      모든 변경 액션 (인터페이스 등록/실행/재처리/장애 처리/시크릿 변경/로그인 등) 의
-      <strong>누가 · 언제 · 무엇을 · 어디서</strong> 영구 기록. 금감원 감사 / 내부 보안
-      조사 / 사고 분석 시 자료로 사용. 운영자(OPERATOR) 는 접근 불가, ADMIN/VIEWER 만.
+      모든 변경 액션의 <strong>누가 · 언제 · 무엇을 · 어디서</strong> 영구 기록 (감사·사고 분석용).
+      ADMIN / VIEWER 만 접근.
     </v-alert>
 
     <v-card class="mb-4">
       <v-card-text>
-        <v-row dense>
+        <v-row dense align="center">
           <v-col cols="12" md="3">
-            <v-text-field v-model="filter.actor" label="사용자명 (부분일치)" density="compact" variant="outlined" clearable />
+            <v-text-field v-model="filter.actor" label="사용자명 (부분일치)" density="compact" variant="outlined" clearable hide-details />
           </v-col>
           <v-col cols="12" md="3">
             <v-autocomplete
@@ -38,6 +37,7 @@
               density="compact"
               variant="outlined"
               clearable
+              hide-details
             />
           </v-col>
           <v-col cols="12" md="2">
@@ -48,6 +48,7 @@
               density="compact"
               variant="outlined"
               clearable
+              hide-details
             />
           </v-col>
           <v-col cols="12" md="2">
@@ -62,7 +63,7 @@
               hide-details
             />
           </v-col>
-          <v-col cols="12" md="2" class="d-flex align-center">
+          <v-col cols="12" md="2">
             <v-btn block color="primary" @click="load" :loading="loading">검색</v-btn>
           </v-col>
         </v-row>

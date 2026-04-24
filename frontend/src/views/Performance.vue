@@ -30,7 +30,7 @@
     <v-row>
       <!-- Throughput chart -->
       <v-col cols="12" md="7">
-        <v-card>
+        <v-card height="100%">
           <v-card-title class="text-subtitle-1">처리량 (TPS) · p95 응답시간 — 최근 24시간</v-card-title>
           <v-card-text>
             <apexchart v-if="tpsRows.length" type="line" height="320" :options="tpsOpts" :series="tpsSeries" />
@@ -41,7 +41,7 @@
 
       <!-- Slow top -->
       <v-col cols="12" md="5">
-        <v-card>
+        <v-card height="100%">
           <v-card-title class="text-subtitle-1">가장 느린 호출 Top 10</v-card-title>
           <v-data-table
             :headers="slowHeaders"

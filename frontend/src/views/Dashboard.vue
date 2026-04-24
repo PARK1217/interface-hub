@@ -2,10 +2,10 @@
   <div>
     <v-row>
       <v-col cols="12" md="3" v-for="kpi in kpis" :key="kpi.label">
-        <v-card variant="elevated">
+        <v-card variant="elevated" height="100%">
           <v-card-text>
             <div class="text-caption text-medium-emphasis">{{ kpi.label }}</div>
-            <div class="text-h4 mt-1" :class="kpi.color">{{ kpi.value }}</div>
+            <div class="text-h4 mt-1 kpi-value" :class="kpi.color">{{ kpi.value }}</div>
             <div class="text-caption mt-1">{{ kpi.hint }}</div>
           </v-card-text>
         </v-card>

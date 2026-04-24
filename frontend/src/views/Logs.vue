@@ -22,23 +22,23 @@
 
     <v-card class="mb-4">
       <v-card-text>
-        <v-row>
+        <v-row dense align="center">
           <v-col cols="12" md="2">
-            <v-text-field v-model.number="filter.interface_id" label="인터페이스 ID" type="number" clearable density="compact" />
+            <v-text-field v-model.number="filter.interface_id" label="인터페이스 ID" type="number" clearable density="compact" hide-details />
           </v-col>
           <v-col cols="12" md="2">
-            <v-select v-model="filter.status" :items="statuses" label="상태" clearable density="compact" />
+            <v-select v-model="filter.status" :items="statuses" label="상태" clearable density="compact" hide-details />
           </v-col>
           <v-col cols="12" md="2">
-            <v-select v-model="filter.protocol" :items="protocols" label="프로토콜" clearable density="compact" />
+            <v-select v-model="filter.protocol" :items="protocols" label="프로토콜" clearable density="compact" hide-details />
           </v-col>
           <v-col cols="12" md="3">
-            <v-text-field v-model="filter.keyword" label="에러 메시지 키워드" clearable density="compact" />
+            <v-text-field v-model="filter.keyword" label="에러 메시지 키워드" clearable density="compact" hide-details />
           </v-col>
-          <v-col cols="12" md="2">
+          <v-col cols="12" md="2" class="d-flex align-center" style="padding-left: 20px">
             <v-switch v-model="filter.failedOnly" hide-details color="warning" label="실패만" density="compact" />
           </v-col>
-          <v-col cols="12" md="1" class="d-flex align-center">
+          <v-col cols="12" md="1">
             <v-btn block color="primary" @click="load" :loading="loading">검색</v-btn>
           </v-col>
         </v-row>
@@ -62,6 +62,11 @@
           <v-chip size="small" :color="item.status === 'SUCCESS' ? 'success' : 'error'">{{ item.status }}</v-chip>
         </template>
         <template #item.duration_ms="{ item }">{{ item.duration_ms }} ms</template>
+        <template #item.triggered_by="{ item }">
+          <v-chip size="x-small" :color="triggerColor(item.triggered_by)" variant="tonal">
+            {{ triggerLabel(item.triggered_by) }}
+          </v-chip>
+        </template>
         <template #item.lineage="{ item }">
           <v-chip
             v-if="item.parent_log_id"
@@ -167,7 +172,7 @@
             </v-col>
             <v-col cols="6" md="3">
               <div class="text-caption text-medium-emphasis">트리거</div>
-              <div>{{ detail.triggered_by }}</div>
+              <div>{{ triggerLabel(detail.triggered_by) }}</div>
             </v-col>
             <v-col cols="6" md="3">
               <div class="text-caption text-medium-emphasis">호출 시각</div>
@@ -284,7 +289,7 @@ const statuses = ['SUCCESS', 'FAILURE', 'TIMEOUT', 'AUTH_ERROR', 'FORMAT_ERROR',
 const protocols = ['REST', 'SOAP', 'FTP', 'MQ', 'BATCH'];
 const headers = [
   { title: '시각', key: 'called_at' },
-  { title: 'IF', key: 'interface_id', width: 50 },
+  { title: '인터페이스 ID', key: 'interface_id', width: 110 },
   { title: '상태', key: 'status', width: 110 },
   { title: 'HTTP', key: 'http_status', width: 70 },
   { title: '소요', key: 'duration_ms', width: 80 },
@@ -319,6 +324,23 @@ function notify(text: string, color = 'success') {
 
 function canRetry(item: CallLogItem) {
   return item.status !== 'SUCCESS' && !item.is_reprocessed;
+}
+
+function triggerLabel(t: string | undefined): string {
+  return ({
+    manual: '수동',
+    schedule: '스케줄',
+    reprocess: '재처리',
+    ingest: '외부 수신',
+  } as Record<string, string>)[t ?? ''] ?? t ?? '-';
+}
+function triggerColor(t: string | undefined): string {
+  return ({
+    manual: 'primary',
+    schedule: 'info',
+    reprocess: 'warning',
+    ingest: 'deep-purple',
+  } as Record<string, string>)[t ?? ''] ?? 'grey';
 }
 
 async function load() {

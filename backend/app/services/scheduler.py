@@ -85,11 +85,31 @@ def sync_jobs() -> None:
         db.close()
 
 
+async def _run_secret_expiry_check() -> None:
+    """매일 1회 인증 키 만료 임박 검사 (D-7 이내) → incident + 알림."""
+    from app.services.secret_expiry import check_expiring_secrets
+    try:
+        n = await asyncio.to_thread(check_expiring_secrets)
+        if n:
+            log.info("secret expiry check: %d new warning incident(s) created", n)
+    except Exception:  # noqa: BLE001
+        log.exception("secret expiry check failed")
+
+
 def start_scheduler() -> None:
     sched = get_scheduler()
     if not sched.running:
         sched.start()
     sync_jobs()
+    # 일일 만료 검사 — 매일 09:00 KST. 운영자 출근 시간에 맞춰 알림 자연 도달.
+    sched.add_job(
+        _run_secret_expiry_check,
+        trigger=CronTrigger.from_crontab("0 9 * * *", timezone=KST),
+        id="secret-expiry-daily",
+        replace_existing=True,
+        coalesce=True,
+        max_instances=1,
+    )
     log.info("scheduler started with %d job(s)", len(sched.get_jobs()))
 
 

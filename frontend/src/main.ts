@@ -8,6 +8,7 @@ import vuetify from './plugins/vuetify';
 
 import '@mdi/font/css/materialdesignicons.css';
 import 'vuetify/styles';
+import '@/styles/app.css';
 
 const app = createApp(App);
 app.use(createPinia());

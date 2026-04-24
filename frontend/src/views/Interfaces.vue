@@ -2,6 +2,15 @@
   <div>
     <div class="d-flex align-center mb-4">
       <h2 class="text-h5">인터페이스 관리</h2>
+      <v-chip
+        class="ml-3"
+        size="small"
+        color="primary"
+        variant="tonal"
+        prepend-icon="mdi-format-list-bulleted"
+      >
+        총 {{ rows.length }}개
+      </v-chip>
       <v-spacer />
       <v-btn
         v-if="auth.isAdmin"
@@ -18,7 +27,7 @@
 
     <v-card class="mb-4">
       <v-card-text>
-        <v-row dense>
+        <v-row dense align="center">
           <v-col cols="12" md="3">
             <v-select
               v-model="filter.category"
@@ -54,7 +63,7 @@
               @update:model-value="load"
             />
           </v-col>
-          <v-col cols="12" md="2">
+          <v-col cols="12" md="4" class="d-flex align-center" style="gap: 16px; padding-left: 16px">
             <v-switch
               v-model="filter.enabledOnly"
               label="활성만"
@@ -64,8 +73,6 @@
               :disabled="filter.trashOnly"
               @update:model-value="load"
             />
-          </v-col>
-          <v-col cols="12" md="2">
             <v-switch
               v-model="filter.trashOnly"
               label="휴지통"
@@ -75,12 +82,26 @@
               @update:model-value="load"
             />
           </v-col>
-          <v-col cols="12" md="1" class="d-flex align-center justify-end">
-            <span class="text-caption text-medium-emphasis">{{ rows.length }}건</span>
-          </v-col>
         </v-row>
       </v-card-text>
     </v-card>
+
+    <v-alert
+      v-if="focusedId"
+      :type="focusedRowExists ? 'info' : 'warning'"
+      variant="tonal"
+      density="compact"
+      class="mb-3"
+      closable
+      @click:close="focusedId = null"
+    >
+      <template v-if="focusedRowExists">
+        인터페이스 <strong>#{{ focusedId }}</strong> 가 목록에서 파란 테두리로 강조되어 있습니다.
+      </template>
+      <template v-else>
+        인터페이스 <strong>#{{ focusedId }}</strong> 를 찾지 못했습니다 — 보관 처리됐거나 삭제됐을 수 있습니다.
+      </template>
+    </v-alert>
 
     <v-card>
       <v-alert
@@ -188,10 +209,31 @@
             >
               음소거 {{ muteRemaining(item) }}
             </v-chip>
+            <!-- 인증 키 만료 임박 칩 — D-7 이내 노랑, D-3 이하 빨강, 만료된 것 회색 -->
+            <v-chip
+              v-if="expiryStatus(item)"
+              size="x-small"
+              :color="expiryStatus(item)!.color"
+              variant="flat"
+              prepend-icon="mdi-key-alert-outline"
+              :title="expiryStatus(item)!.title"
+            >
+              {{ expiryStatus(item)!.label }}
+            </v-chip>
           </div>
         </template>
         <template #item.actions="{ item }">
           <template v-if="!item.deleted_at">
+            <!-- 🔓 시크릿 조회: ADMIN + has_secret 만. 맨 앞에 두어 다른 액션 정렬을 흐트리지 않음 -->
+            <v-btn
+              v-if="auth.isAdmin && item.has_secret"
+              icon="mdi-key-outline"
+              variant="text"
+              size="small"
+              color="warning"
+              title="시크릿 조회 (사유 기록됨)"
+              @click="openReveal(item)"
+            />
             <!-- ▶ 실행: OPERATOR 이상. INBOUND 는 능동 실행 불가라 비활성. -->
             <v-btn
               v-if="auth.canMutate"
@@ -232,7 +274,7 @@
                 />
               </v-list>
             </v-menu>
-            <!-- ✏️ 수정 / 🔓 시크릿 조회 / 📦 보관: ADMIN 만 -->
+            <!-- ✏️ 수정 / 📦 보관: ADMIN 만 -->
             <v-btn
               v-if="auth.isAdmin"
               icon="mdi-pencil"
@@ -240,15 +282,6 @@
               size="small"
               title="수정"
               @click="openEdit(item)"
-            />
-            <v-btn
-              v-if="auth.isAdmin && item.has_secret"
-              icon="mdi-key-outline"
-              variant="text"
-              size="small"
-              color="warning"
-              title="시크릿 조회 (사유 기록됨)"
-              @click="openReveal(item)"
             />
             <v-btn
               v-if="auth.isAdmin"
@@ -541,6 +574,21 @@
             class="mt-2"
           />
 
+          <!-- 인증 키 만료일 — D-7 이내 자동 알림 (auth_type=NONE 이면 비활성) -->
+          <v-text-field
+            v-model="form.auth_secret_expires_at"
+            label="인증 키 만료일 (선택)"
+            type="date"
+            density="comfortable"
+            variant="outlined"
+            prepend-inner-icon="mdi-calendar-clock-outline"
+            :disabled="form.auth_type === 'NONE'"
+            hint="만료 7일 전부터 자동 알림 (3일 이내는 긴급). 비우면 모니터링 안 함."
+            persistent-hint
+            clearable
+            class="mt-2"
+          />
+
           <div class="text-overline text-medium-emphasis mb-2 mt-4">임계값 (선택)</div>
           <v-row dense>
             <v-col cols="12" md="6">
@@ -724,7 +772,19 @@
       </v-card>
     </v-dialog>
 
-    <v-snackbar v-model="snack.show" :color="snack.color" timeout="2500">{{ snack.text }}</v-snackbar>
+    <v-snackbar
+      v-model="snack.show"
+      :color="snack.color"
+      :timeout="snack.action ? 6000 : 2500"
+      location="top right"
+    >
+      {{ snack.text }}
+      <template v-if="snack.action" #actions>
+        <v-btn variant="text" @click="snack.action.handler(); snack.show = false">
+          {{ snack.action.label }}
+        </v-btn>
+      </template>
+    </v-snackbar>
   </div>
 </template>
 
@@ -751,7 +811,7 @@
 
 <script setup lang="ts">
 import { computed, onMounted, reactive, ref, watch } from 'vue';
-import { useRoute } from 'vue-router';
+import { useRoute, useRouter } from 'vue-router';
 import { Interfaces, type InterfaceItem } from '@/api/client';
 import { cronToLabel, formatDateTime, formatDateTimeShort } from '@/utils/format';
 import { useAuthStore } from '@/stores/auth';
@@ -860,7 +920,13 @@ const loading = ref(false);
 const saving = ref(false);
 const running = ref<number | null>(null);
 const dialog = ref(false);
-const snack = reactive({ show: false, text: '', color: 'success' });
+interface SnackAction { label: string; handler: () => void }
+const snack = reactive<{
+  show: boolean;
+  text: string;
+  color: string;
+  action: SnackAction | null;
+}>({ show: false, text: '', color: 'success', action: null });
 
 // 알림 음소거 / 채널 ----------------------------------------------
 const muteOptions = [
@@ -890,6 +956,36 @@ function muteRemaining(item: InterfaceItem): string {
   const h = Math.floor(totalMin / 60);
   const m = totalMin % 60;
   return m > 0 ? `${h}시간 ${m}분` : `${h}시간`;
+}
+
+// 인증 키 만료 임박 상태 — null 이면 모니터링 안 함 / 7일 초과면 표시 안 함.
+function expiryStatus(item: InterfaceItem): { color: string; label: string; title: string } | null {
+  if (!item.auth_secret_expires_at) return null;
+  const now = Date.now();
+  const exp = new Date(item.auth_secret_expires_at).getTime();
+  const days = Math.floor((exp - now) / 86400_000);
+  if (days < 0) {
+    return {
+      color: 'grey-darken-2',
+      label: `만료 ${-days}일 경과`,
+      title: `${formatDateTimeShort(item.auth_secret_expires_at)} 에 만료됨 — 즉시 갱신 필요`,
+    };
+  }
+  if (days <= 3) {
+    return {
+      color: 'error',
+      label: days === 0 ? '오늘 만료' : `D-${days}`,
+      title: `${formatDateTimeShort(item.auth_secret_expires_at)} 만료 — 긴급 갱신 권장`,
+    };
+  }
+  if (days <= 7) {
+    return {
+      color: 'warning',
+      label: `D-${days}`,
+      title: `${formatDateTimeShort(item.auth_secret_expires_at)} 만료 예정 — 곧 갱신 필요`,
+    };
+  }
+  return null;
 }
 
 const formChannels = computed<('in_app' | 'slack' | 'email')[]>({
@@ -1062,8 +1158,8 @@ function protocolColor(p: string) {
   return { REST: 'primary', SOAP: 'secondary', FTP: 'warning', MQ: 'success', BATCH: 'purple' }[p] ?? 'grey';
 }
 
-function notify(text: string, color = 'success') {
-  Object.assign(snack, { show: true, text, color });
+function notify(text: string, color = 'success', action: SnackAction | null = null) {
+  Object.assign(snack, { show: true, text, color, action });
 }
 
 async function load() {
@@ -1110,6 +1206,7 @@ function openCreate() {
     timeout_seconds: null,
     retry_max: 0,
     retry_backoff_seconds: 1.0,
+    auth_secret_expires_at: null,
     enabled: true,
   });
   parseCron('');
@@ -1117,7 +1214,15 @@ function openCreate() {
 }
 
 function openEdit(item: InterfaceItem) {
-  Object.assign(form, item, { auth_secret: '', secret_change_reason: '' });
+  // <input type="date"> 는 YYYY-MM-DD 만 받음 — ISO 8601 datetime 의 앞 10자만 잘라 매핑.
+  const expiresDate = item.auth_secret_expires_at
+    ? item.auth_secret_expires_at.slice(0, 10)
+    : null;
+  Object.assign(form, item, {
+    auth_secret: '',
+    secret_change_reason: '',
+    auth_secret_expires_at: expiresDate,
+  });
   parseCron(item.schedule_cron ?? '');
   dialog.value = true;
 }
@@ -1228,8 +1333,22 @@ async function run(item: InterfaceItem) {
   running.value = item.id;
   try {
     const res = await Interfaces.execute(item.id);
-    notify(`${item.name} → ${res.data.status} (${res.data.duration_ms}ms)`,
-      res.data.status === 'SUCCESS' ? 'success' : 'warning');
+    const status = res.data.status;
+    const text = `${item.name} → ${status} (${res.data.duration_ms}ms)`;
+    if (status === 'SUCCESS') {
+      notify(text, 'success');
+    } else {
+      // 실패 시 — 페이지 내 알림 + 장애 페이지로 바로 이동 액션. 같은 유형의
+      // 미해결 incident 가 있으면 별도 toast 는 안 뜨므로 (alarm fatigue 방지),
+      // 여기서 명시적으로 장애 페이지 안내해야 사용자가 흐름 놓치지 않음.
+      notify(text, 'error', {
+        label: '장애 보기',
+        handler: () => router.push({
+          path: '/incidents',
+          query: { unresolved: '1' },
+        }),
+      });
+    }
   } catch (e: any) {
     notify(e?.response?.data?.detail ?? '실행 실패', 'error');
   } finally {
@@ -1239,17 +1358,44 @@ async function run(item: InterfaceItem) {
 
 // 토폴로지에서 ?focus=ID 로 진입하면 해당 row 강조
 const route = useRoute();
+const router = useRouter();
 const focusedId = ref<number | null>(null);
+// focus 진입 시 필터 (분류/프로토콜/기관/활성만/휴지통) 를 모두 해제 — 어떤 상태의
+// 인터페이스든 (휴지통 포함) 항상 강조 표시될 수 있도록.
+function clearFiltersForFocus() {
+  filter.category = null;
+  filter.protocol = null;
+  filter.organization = null;
+  filter.enabledOnly = false;
+  filter.trashOnly = false;
+}
+
+const focusedRowExists = computed(
+  () => focusedId.value != null && rows.value.some((r) => r.id === focusedId.value),
+);
+
 onMounted(async () => {
   const fp = Number(route.query.focus);
-  if (Number.isFinite(fp) && fp > 0) focusedId.value = fp;
+  if (Number.isFinite(fp) && fp > 0) {
+    focusedId.value = fp;
+    clearFiltersForFocus();
+  }
   await load();
 });
 watch(
   () => route.query.focus,
-  (v) => {
+  async (v) => {
     const n = Number(v);
-    focusedId.value = Number.isFinite(n) && n > 0 ? n : null;
+    if (Number.isFinite(n) && n > 0) {
+      if (focusedId.value !== n) {
+        focusedId.value = n;
+        clearFiltersForFocus();
+        await load();
+      }
+      return;
+    }
+    // focus 사라짐 → 강조 해제 (필터는 사용자가 다시 설정하지 않음 — 의도 보존)
+    focusedId.value = null;
   },
 );
 </script>

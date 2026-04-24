@@ -97,6 +97,12 @@ _DEMO_MIGRATIONS: list[str] = [
     EXCEPTION WHEN duplicate_object THEN NULL; END $$""",
     "ALTER TABLE interfaces ADD COLUMN IF NOT EXISTS direction interfacedirection NOT NULL DEFAULT 'OUTBOUND'",
     "CREATE INDEX IF NOT EXISTS ix_interfaces_direction ON interfaces(direction)",
+    # 인증 키 만료일 + 마지막 임박 알림 dedup
+    "ALTER TABLE interfaces ADD COLUMN IF NOT EXISTS auth_secret_expires_at TIMESTAMPTZ",
+    "ALTER TABLE interfaces ADD COLUMN IF NOT EXISTS auth_secret_warning_sent_at TIMESTAMPTZ",
+    "CREATE INDEX IF NOT EXISTS ix_interfaces_auth_secret_expires_at ON interfaces(auth_secret_expires_at)",
+    # 새 incident type — 인증 키 만료 임박 경고
+    "ALTER TYPE incidenttype ADD VALUE IF NOT EXISTS 'SECRET_EXPIRY_WARNING'",
     # 전역 알림 룰 (severity 라우팅 + 근무시간 외 silence)
     """CREATE TABLE IF NOT EXISTS alert_rules (
         id SERIAL PRIMARY KEY,

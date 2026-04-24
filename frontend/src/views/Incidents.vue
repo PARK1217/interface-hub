@@ -16,23 +16,29 @@
     </div>
 
     <v-alert type="info" variant="tonal" density="compact" class="mb-4">
-      같은 원인으로 반복되는 호출 실패는 <strong>하나의 장애</strong>로 묶여 표시됩니다.
-      매 실패마다 알림이 울리는 대신 한 번만 인지하면 되므로, 야간·휴일에도
-      알림 폭주 없이 즉시 대응할 수 있습니다. 우측 <strong>[N건]</strong> 칩을 누르면
-      이 장애를 일으킨 호출들을 시간순으로 확인할 수 있어요.
+      같은 원인의 반복 실패는 <strong>하나의 장애</strong>로 묶어 표시 — 알림 폭주 방지.
+      각 행의 <strong>"관련 호출"</strong> 칩을 누르면 그 장애를 일으킨 호출들을 볼 수 있습니다.
     </v-alert>
 
     <v-alert
       v-if="focusedId"
-      type="info"
+      :type="focusedRowExists ? 'info' : 'warning'"
       variant="tonal"
       density="compact"
       class="mb-3"
       closable
       @click:close="clearFocus"
     >
-      AI 분석에서 드릴다운된 장애 <strong>incident #{{ focusedId }}</strong> 를 강조 표시 중입니다.
-      <span v-if="!focusedRowExists" class="text-error">— 해당 incident 가 목록에 없습니다 (해결되어 필터에 가려졌을 수 있음)</span>
+      <template v-if="focusedRowExists">
+        장애 <strong>#{{ focusedId }}</strong> 가 목록에서 파란 테두리로 강조되어 있습니다.
+        관련 호출 로그를 보려면 해당 행의 <strong>"관련 호출"</strong> 칩을 클릭하세요.
+      </template>
+      <template v-else>
+        장애 <strong>#{{ focusedId }}</strong> 를 현재 목록에서 찾지 못했습니다.
+        데이터가 갱신됐거나 필터 조건에 맞지 않을 수 있어요 —
+        <a href="#" class="text-decoration-underline" @click.prevent="reloadAll">목록 새로고침</a>
+        후에도 보이지 않으면 다른 검색 조건으로 찾아보세요.
+      </template>
     </v-alert>
 
     <v-card>
@@ -58,7 +64,7 @@
           </v-chip>
         </template>
         <template #item.severity="{ item }">
-          <v-chip size="small" :color="sevColor(item.severity)">{{ item.severity }}</v-chip>
+          <v-chip size="small" :color="sevColor(item.severity)">{{ sevLabel(item.severity) }}</v-chip>
         </template>
         <template #item.type="{ item }">
           <v-chip size="small" variant="outlined">{{ item.type }}</v-chip>
@@ -104,7 +110,7 @@
       <v-card v-if="relatedTarget">
         <v-card-title class="d-flex align-center">
           <span>관련 호출 로그</span>
-          <v-chip class="ml-3" size="small" :color="sevColor(relatedTarget.severity)">{{ relatedTarget.severity }}</v-chip>
+          <v-chip class="ml-3" size="small" :color="sevColor(relatedTarget.severity)">{{ sevLabel(relatedTarget.severity) }}</v-chip>
           <v-chip class="ml-2" size="small" variant="outlined">{{ relatedTarget.type }}</v-chip>
           <v-chip class="ml-2" size="small" color="info">incident #{{ relatedTarget.id }}</v-chip>
           <v-spacer />
@@ -210,7 +216,7 @@ function clearFocus() {
 const headers = [
   { title: '상태', key: 'state', width: 110 },
   { title: '감지 시각', key: 'detected_at' },
-  { title: 'IF', key: 'interface_id', width: 60 },
+  { title: '인터페이스 ID', key: 'interface_id', width: 110 },
   { title: '유형', key: 'type' },
   { title: '심각도', key: 'severity' },
   { title: '요약', key: 'summary' },
@@ -251,6 +257,11 @@ function sevColor(s: string) {
   return ({ critical: 'error', warning: 'warning', info: 'info' } as Record<string, string>)[s] ?? 'grey';
 }
 
+// 알림 룰 페이지와 라벨 통일 (info=참고 / warning=주의 / critical=긴급)
+function sevLabel(s: string): string {
+  return ({ critical: '긴급', warning: '주의', info: '참고' } as Record<string, string>)[s] ?? s;
+}
+
 const fmt = formatDateTime;
 
 async function load(only?: boolean) {
@@ -261,6 +272,12 @@ async function load(only?: boolean) {
   } finally {
     loading.value = false;
   }
+}
+
+// AI 드릴다운에서 매칭 실패 시 — 미해결만 토글을 끄고 전체 다시 로드
+async function reloadAll() {
+  unresolvedOnly.value = false;
+  await load();
 }
 
 async function resolve(id: number) {
@@ -308,28 +325,37 @@ async function retryRelated(mode: 'latest' | 'all') {
 }
 
 onMounted(async () => {
-  // ?focus=ID 가 있으면: 강조 ID 설정 → 미해결만 토글 강제 해제 (해결된 사례도 보이게)
-  // → 데이터 로드 → 해당 incident 가 있으면 자동으로 관련 호출 다이얼로그 오픈.
+  // ?focus=ID 가 있으면 해당 행 강조 + 미해결만 필터 해제 (해결된 사례도 보이게).
+  // ?unresolved=1 이면 종 아이콘 클릭으로 진입 → 미해결만 토글 ON.
   const fp = Number(route.query.focus);
   if (Number.isFinite(fp) && fp > 0) {
     focusedId.value = fp;
     unresolvedOnly.value = false;
+  } else if (route.query.unresolved === '1') {
+    unresolvedOnly.value = true;
   }
   await load();
-  if (focusedId.value && focusedRowExists.value) {
-    const target = rows.value.find((r) => r.id === focusedId.value);
-    if (target) await openRelated(target);
-  }
 });
 
-// 라우트 쿼리 변화 감지 (다른 페이지에서 다시 드릴다운될 때)
+// 라우트 쿼리 변화 감지 — focus / unresolved 처리.
+// 같은 페이지에 머물러도 query 가 바뀌면 watch 가 트리거됨.
 watch(
-  () => route.query.focus,
-  async (v) => {
-    const n = Number(v);
-    if (Number.isFinite(n) && n > 0 && n !== focusedId.value) {
-      focusedId.value = n;
-      unresolvedOnly.value = false;
+  () => route.query,
+  async (q) => {
+    const n = Number(q.focus);
+    if (Number.isFinite(n) && n > 0) {
+      if (n !== focusedId.value) {
+        focusedId.value = n;
+        unresolvedOnly.value = false;
+        await load();
+      }
+      return;
+    }
+    // focus 사라짐 → 강조 해제
+    if (focusedId.value !== null) focusedId.value = null;
+    // 종 아이콘으로 진입 → 미해결만 토글 + 데이터 새로고침
+    if (q.unresolved === '1') {
+      unresolvedOnly.value = true;
       await load();
     }
   },

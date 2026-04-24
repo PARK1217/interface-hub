@@ -14,35 +14,32 @@
         hide-details
         density="compact"
         color="primary"
-        class="ml-3"
-        style="flex: 0"
+        class="ml-4 retry-filter-switch"
         @update:model-value="loadRows"
       />
       <v-btn icon="mdi-refresh" size="small" variant="text" class="ml-2" @click="loadAll" />
     </div>
 
     <v-alert type="info" variant="tonal" density="compact" class="mb-4">
-      외부 기관 일시 장애(5xx · timeout · network) 시 자동 재시도 정책이 실제로 의미 있는지 분석.
-      <strong>복구율</strong> = 재시도 발생한 호출 중 최종 성공한 비율. 복구율 60% 이상이면 정책이
-      효과적, 20% 미만이면 backoff 늘리거나 재시도 횟수 조정 권장.
-      REST/SOAP 만 적용 — SFTP/MQ/BATCH 는 멱등성 문제로 재시도 안 함.
+      재시도 정책의 실제 효과를 분석 — <strong>복구율</strong> = 재시도 발생 호출 중 최종 성공 비율.
+      60% 이상이면 정책 유지, 20% 미만이면 재검토 권장.
     </v-alert>
 
     <!-- KPI 카드 -->
     <v-row v-if="summary" dense class="mb-4">
       <v-col cols="12" md="3">
-        <v-card>
+        <v-card height="100%">
           <v-card-text>
             <div class="text-overline text-medium-emphasis">총 호출 ({{ windowDays }}일)</div>
-            <div class="text-h4">{{ summary.total_calls.toLocaleString() }}</div>
+            <div class="text-h4 kpi-value">{{ summary.total_calls.toLocaleString() }}</div>
           </v-card-text>
         </v-card>
       </v-col>
       <v-col cols="12" md="3">
-        <v-card>
+        <v-card height="100%">
           <v-card-text>
             <div class="text-overline text-medium-emphasis">재시도 발생</div>
-            <div class="text-h4 text-warning">{{ summary.multi_attempt_calls.toLocaleString() }}</div>
+            <div class="text-h4 kpi-value text-warning">{{ summary.multi_attempt_calls.toLocaleString() }}</div>
             <div class="text-caption text-medium-emphasis">
               전체의 {{ ((summary.multi_attempt_calls / Math.max(summary.total_calls, 1)) * 100).toFixed(1) }}%
             </div>
@@ -50,10 +47,10 @@
         </v-card>
       </v-col>
       <v-col cols="12" md="3">
-        <v-card>
+        <v-card height="100%">
           <v-card-text>
             <div class="text-overline text-medium-emphasis">재시도로 복구</div>
-            <div class="text-h4 text-success">{{ summary.recovered_calls.toLocaleString() }}</div>
+            <div class="text-h4 kpi-value text-success">{{ summary.recovered_calls.toLocaleString() }}</div>
             <div class="text-caption text-medium-emphasis">
               복구율 {{ (summary.recovery_rate * 100).toFixed(1) }}%
             </div>
@@ -61,10 +58,10 @@
         </v-card>
       </v-col>
       <v-col cols="12" md="3">
-        <v-card>
+        <v-card height="100%">
           <v-card-text>
             <div class="text-overline text-medium-emphasis">재시도해도 실패</div>
-            <div class="text-h4 text-error">{{ summary.failed_after_retry.toLocaleString() }}</div>
+            <div class="text-h4 kpi-value text-error">{{ summary.failed_after_retry.toLocaleString() }}</div>
             <div class="text-caption text-medium-emphasis">
               정책 설정 인터페이스 {{ summary.interfaces_with_retry }}/{{ summary.interfaces_total }}
             </div>
@@ -246,3 +243,13 @@ function recoveryVerdict(r: RetryEffectRow): string {
   return '낮음 — retry_max 줄이거나 정책 재검토';
 }
 </script>
+
+<style scoped>
+/* v-switch 가 flex 컨테이너 안에서 짜부러져 라벨이 세로로 wrap 되는 것 방지 */
+.retry-filter-switch {
+  flex: 0 0 auto;
+}
+.retry-filter-switch :deep(.v-label) {
+  white-space: nowrap;
+}
+</style>

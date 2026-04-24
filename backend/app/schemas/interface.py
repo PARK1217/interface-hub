@@ -34,6 +34,8 @@ class InterfaceBase(BaseModel):
     timeout_seconds: float | None = Field(default=None, ge=0.5, le=300.0)
     retry_max: int = Field(default=0, ge=0, le=5)
     retry_backoff_seconds: float = Field(default=1.0, ge=0.0, le=30.0)
+    # 인증 키 만료일 (선택). 임박 시 자동 알림.
+    auth_secret_expires_at: datetime | None = None
 
     @field_validator("schedule_cron")
     @classmethod
@@ -72,6 +74,8 @@ class InterfaceUpdate(BaseModel):
     timeout_seconds: float | None = Field(default=None, ge=0.5, le=300.0)
     retry_max: int | None = Field(default=None, ge=0, le=5)
     retry_backoff_seconds: float | None = Field(default=None, ge=0.0, le=30.0)
+    # 인증 키 만료일 (선택)
+    auth_secret_expires_at: datetime | None = None
 
     @field_validator("schedule_cron")
     @classmethod

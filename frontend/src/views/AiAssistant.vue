@@ -165,7 +165,17 @@
           </v-card-text>
         </v-card>
 
-        <v-card v-if="answer" class="mb-4">
+        <!-- 분석 진행 중 — 단계별 메시지를 회전 표시 (실제 백엔드 단계와 1:1 동기화는 아님, UX 안심용) -->
+        <v-card v-if="loading" class="mb-4">
+          <v-card-text class="text-center py-6">
+            <v-progress-circular indeterminate color="primary" size="36" width="3" class="mb-3" />
+            <div class="text-body-1 mb-1">{{ progressMessage }}</div>
+            <div class="text-caption text-medium-emphasis">{{ elapsedSec }}초 경과</div>
+            <v-progress-linear indeterminate color="primary" class="mt-4" rounded height="3" />
+          </v-card-text>
+        </v-card>
+
+        <v-card v-if="answer && !loading" class="mb-4">
           <v-card-title class="d-flex align-center" style="flex-wrap: wrap; gap: 6px">
             <span>분석 결과</span>
             <v-chip
@@ -227,7 +237,7 @@
             </span>
             <strong class="text-success">{{ lastProvider }}</strong> 성공
           </v-card-subtitle>
-          <v-card-text style="white-space: pre-wrap">{{ answer }}</v-card-text>
+          <v-card-text class="ai-answer-md" v-html="renderedAnswer" @click="handleAnswerClick" />
         </v-card>
 
         <v-card v-if="cases.length">
@@ -277,8 +287,7 @@
               hide-details
               density="compact"
               color="warning"
-              class="mr-2"
-              style="flex: 0"
+              class="mr-2 history-filter-switch"
               @update:model-value="loadHistory"
             />
             <v-btn icon="mdi-refresh" size="x-small" variant="text" @click="loadHistory" />
@@ -355,6 +364,8 @@ import { computed, onMounted, reactive, ref } from 'vue';
 import { AI, type AiHistoryItem, type AiSuggestion } from '@/api/client';
 import { formatDateTimeShort } from '@/utils/format';
 import { useRouter } from 'vue-router';
+import { marked } from 'marked';
+import DOMPurify from 'dompurify';
 
 const router = useRouter();
 
@@ -391,6 +402,37 @@ interface LLMAttempt {
 
 const question = ref('');
 const answer = ref('');
+// LLM 응답을 markdown 으로 렌더 (표/볼드/헤더/리스트 등). 항상 sanitize 필수.
+marked.setOptions({ gfm: true, breaks: true });
+
+const renderedAnswer = computed(() => {
+  if (!answer.value) return '';
+  const raw = marked.parse(answer.value, { async: false }) as string;
+  const safe = DOMPurify.sanitize(raw);
+  // 안전망: LLM 이 markdown 링크 지시를 안 따랐을 때 plain "#42" 패턴을 anchor 로.
+  // 이미 a 태그 안에 들어간 #N 은 건드리지 않음.
+  return safe.replace(/(<a [^>]*>.*?<\/a>)|(#\d+\b)/gi, (match, anchor, plain) => {
+    if (anchor) return anchor;
+    if (plain) {
+      const id = plain.slice(1);
+      return `<a href="/incidents?focus=${id}" class="ai-incident-link">${plain}</a>`;
+    }
+    return match;
+  });
+});
+
+// v-html 로 렌더된 a 태그는 router-link 가 아니라 일반 anchor — SPA 라우팅 유지를 위해
+// 클릭을 가로채서 router.push 로 이동. 외부 URL (http://) 은 그대로 둠.
+function handleAnswerClick(e: MouseEvent) {
+  const t = e.target as HTMLElement | null;
+  const a = t?.closest('a') as HTMLAnchorElement | null;
+  if (!a) return;
+  const href = a.getAttribute('href') || '';
+  if (href.startsWith('/')) {
+    e.preventDefault();
+    router.push(href);
+  }
+}
 const cases = ref<{ incident_id: number; type: string; content: string; score: number }[]>([]);
 const lastMode = ref<'llm' | 'fallback' | null>(null);
 const lastProvider = ref<string | null>(null);
@@ -585,8 +627,37 @@ function describeAxiosError(e: any): string {
   return e?.message || 'AI 분석 실패';
 }
 
+// 분석 진행 메시지 — 실제 백엔드 단계와 1:1 동기화는 아니지만 일반적 흐름 따라 회전.
+// 마지막 메시지에서 멈추도록 인덱스 cap.
+const PROGRESS_STEPS = [
+  '질문 의도를 분석하는 중...',
+  '관련 인터페이스 / 과거 사례 검색 중...',
+  '유사도 계산 중...',
+  'AI 모델에 컨텍스트 전달 중...',
+  '답변 생성 중...',
+  '결과 정리 및 형식 변환 중...',
+  '거의 다 됐습니다, 잠시만요...',
+];
+const progressIdx = ref(0);
+const elapsedSec = ref(0);
+const progressMessage = computed(() => PROGRESS_STEPS[Math.min(progressIdx.value, PROGRESS_STEPS.length - 1)]);
+let progressTimer: ReturnType<typeof setInterval> | null = null;
+let elapsedTimer: ReturnType<typeof setInterval> | null = null;
+
+function startProgress() {
+  progressIdx.value = 0;
+  elapsedSec.value = 0;
+  progressTimer = setInterval(() => { progressIdx.value += 1; }, 1800);
+  elapsedTimer = setInterval(() => { elapsedSec.value += 1; }, 1000);
+}
+function stopProgress() {
+  if (progressTimer) { clearInterval(progressTimer); progressTimer = null; }
+  if (elapsedTimer) { clearInterval(elapsedTimer); elapsedTimer = null; }
+}
+
 async function ask() {
   loading.value = true;
+  startProgress();
   try {
     const res = await AI.ask(question.value);
     answer.value = res.data.answer;
@@ -610,6 +681,89 @@ async function ask() {
     });
   } finally {
     loading.value = false;
+    stopProgress();
   }
 }
 </script>
+
+<style scoped>
+/* v-switch 가 flex 컨테이너 안에서 짜부러져 라벨이 세로로 wrap 되는 것 방지 */
+.history-filter-switch {
+  flex: 0 0 auto;
+}
+.history-filter-switch :deep(.v-label) {
+  white-space: nowrap;
+}
+
+/* AI 답변 markdown 렌더 — 표/헤더/볼드/코드 기본 스타일 */
+.ai-answer-md :deep(h1),
+.ai-answer-md :deep(h2),
+.ai-answer-md :deep(h3),
+.ai-answer-md :deep(h4) {
+  font-weight: 600;
+  margin: 14px 0 8px;
+  line-height: 1.3;
+}
+.ai-answer-md :deep(h1) { font-size: 1.4rem; }
+.ai-answer-md :deep(h2) { font-size: 1.2rem; }
+.ai-answer-md :deep(h3) { font-size: 1.05rem; }
+.ai-answer-md :deep(h4) { font-size: 0.95rem; }
+.ai-answer-md :deep(p) {
+  margin: 6px 0;
+  line-height: 1.55;
+}
+.ai-answer-md :deep(ul),
+.ai-answer-md :deep(ol) {
+  margin: 6px 0 6px 20px;
+  padding-left: 8px;
+}
+.ai-answer-md :deep(li) {
+  margin: 2px 0;
+}
+.ai-answer-md :deep(strong) {
+  font-weight: 600;
+}
+.ai-answer-md :deep(code) {
+  background: rgba(127, 127, 127, 0.15);
+  padding: 1px 6px;
+  border-radius: 4px;
+  font-size: 0.9em;
+}
+.ai-answer-md :deep(pre) {
+  background: rgba(127, 127, 127, 0.1);
+  padding: 10px;
+  border-radius: 6px;
+  overflow-x: auto;
+  margin: 8px 0;
+}
+.ai-answer-md :deep(pre code) {
+  background: none;
+  padding: 0;
+}
+.ai-answer-md :deep(table) {
+  border-collapse: collapse;
+  margin: 10px 0;
+  font-size: 0.9rem;
+  width: auto;
+}
+.ai-answer-md :deep(th),
+.ai-answer-md :deep(td) {
+  border: 1px solid rgba(127, 127, 127, 0.4);
+  padding: 6px 10px;
+  text-align: left;
+}
+.ai-answer-md :deep(th) {
+  background: rgba(127, 127, 127, 0.1);
+  font-weight: 600;
+}
+.ai-answer-md :deep(blockquote) {
+  border-left: 3px solid rgba(127, 127, 127, 0.4);
+  padding-left: 10px;
+  margin: 6px 0;
+  color: rgba(0, 0, 0, 0.7);
+}
+.ai-answer-md :deep(a) {
+  color: rgb(var(--v-theme-primary));
+  text-decoration: underline;
+}
+</style>

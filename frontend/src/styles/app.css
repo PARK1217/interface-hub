@@ -1,0 +1,28 @@
+/* ─── 데이터 테이블 — wrap 막고 가로 스크롤로 통일 ───
+   Vuetify 기본 동작: 좁은 화면에서 셀 텍스트 wrap + 동시에 가로 스크롤 발생
+   → 한 행이 여러 줄 늘어나면서 가로 스크롤도 생겨서 가독성 떨어짐.
+   해결: 셀 nowrap 강제 + 컨테이너 가로 스크롤만 사용.
+   wrap 가 꼭 필요한 컬럼은 클래스 .cell-wrap 으로 화이트리스트. */
+.v-data-table th,
+.v-data-table td {
+  white-space: nowrap;
+}
+.v-data-table .cell-wrap,
+.v-data-table td.cell-wrap {
+  white-space: normal;
+}
+.v-data-table__wrapper,
+.v-table__wrapper {
+  overflow-x: auto;
+}
+
+/* 대시보드 KPI 숫자 — 좁은 화면에서도 한 줄 유지 + 단위(ms/% 등) 가 잘리지 않도록
+   ellipsis 대신 폰트 크기를 viewport 너비에 따라 자동 축소.
+   - text-h4 기본 약 2.125rem 을 max 로
+   - 좁은 화면에서는 1.25rem 까지 줄어듦
+   - 가운데 vw 단위가 컨테이너 폭에 비례해 동적 조정 */
+.kpi-value {
+  white-space: nowrap;
+  font-size: clamp(1.25rem, 2.4vw, 2.125rem) !important;
+  line-height: 1.25;
+}

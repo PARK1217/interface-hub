@@ -88,6 +88,15 @@ class Interface(Base):
     auth_type: Mapped[AuthType] = mapped_column(Enum(AuthType), default=AuthType.NONE)
     # encrypted blob (AES-GCM); see core.security
     auth_secret: Mapped[str | None] = mapped_column(Text, default=None)
+    # 인증 키 만료일 (선택). 외부 기관 키는 분기/연 단위로 갱신 의무 — 만료 D-7 이내
+    # 임박 시 자동으로 incident 생성 + 알림. null = 만료일 모름 (모니터링 안 함).
+    auth_secret_expires_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), default=None
+    )
+    # 마지막 만료 임박 알림 발송 시각 — 같은 날 중복 알림 방지용 dedup.
+    auth_secret_warning_sent_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), default=None
+    )
 
     schedule_cron: Mapped[str | None] = mapped_column(String(120), default=None)
     enabled: Mapped[bool] = mapped_column(Boolean, default=True, index=True)

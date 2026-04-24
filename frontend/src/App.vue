@@ -26,12 +26,12 @@
     <v-app-bar elevation="1" class="no-print">
       <v-app-bar-title>{{ currentTitle }}</v-app-bar-title>
       <v-spacer />
-      <!-- 미해결 incident 카운트 뱃지. 클릭 시 incidents 페이지로. -->
+      <!-- 미해결 incident 카운트 뱃지. 클릭 시 미해결만 보기 모드로 incidents 이동. -->
       <v-btn
         variant="text"
         class="mr-2"
         :title="openIncidentCount > 0 ? `미해결 장애 ${openIncidentCount}건 — 클릭해 이동` : '미해결 장애 없음'"
-        @click="router.push('/incidents')"
+        @click="goToUnresolved"
       >
         <v-badge
           :content="openIncidentCount > 99 ? '99+' : openIncidentCount"
@@ -182,7 +182,19 @@ watch(toastShow, (v) => {
 
 function onToastClick() {
   toastShow.value = false;
-  router.push('/incidents');
+  // toast 가 가리키는 incident 가 있으면 ?focus=ID 로 — 장애 페이지에서 해당 행 강조
+  const id = toastIncidentId.value;
+  if (id) {
+    router.push({ path: '/incidents', query: { focus: String(id) } });
+  } else {
+    router.push('/incidents');
+  }
+}
+
+// 종 아이콘 → 미해결만 보기 모드로 진입. 같은 페이지에 있어도 query 가 바뀌면
+// incidents 페이지의 watch 가 트리거되어 토글 ON + 데이터 새로고침.
+function goToUnresolved() {
+  router.push({ path: '/incidents', query: { unresolved: '1' } });
 }
 
 // 강제 비밀번호 변경이 필요하면 다이얼로그 자동 노출.

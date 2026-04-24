@@ -2,7 +2,7 @@
   <div>
     <div class="d-flex align-center mb-4">
       <h2 class="text-h5">알림 룰 (전역)</h2>
-      <v-chip class="ml-3" size="small" color="primary" variant="tonal" prepend-icon="mdi-shield-cog-outline">
+      <v-chip class="ml-3" size="small" color="primary" variant="tonal">
         전역 정책
       </v-chip>
       <v-spacer />
@@ -28,28 +28,26 @@
     </div>
 
     <v-alert type="info" variant="tonal" density="compact" class="mb-4">
-      여기서 설정한 룰은 <strong>전역</strong>으로 적용됩니다. 인터페이스별 음소거 와는
-      별개이며, <strong>두 룰 모두 통과</strong>해야 알림이 발송됩니다 (AND).
-      예) 인터페이스가 slack 만 허용 + 전역 warning 이 in_app+slack → 실제 발송 채널은 slack 만.
+      <strong>전역 공통 정책</strong> — 인터페이스별 음소거와 모두 통과해야 알림이 발송됩니다.
     </v-alert>
 
     <v-row v-if="rule">
-      <!-- severity 별 채널 라우팅 -->
-      <v-col cols="12" md="7">
-        <v-card>
+      <!-- 심각도별 발송 채널 -->
+      <v-col cols="12" md="6">
+        <v-card height="100%">
           <v-card-title>
             <v-icon icon="mdi-traffic-light-outline" class="mr-2" />
-            severity 별 채널 라우팅
+            심각도별 발송 채널
           </v-card-title>
           <v-card-subtitle>
-            장애 심각도(severity) 에 따라 어느 채널로 알림을 보낼지. critical 은 보통 모든 채널,
-            info 는 in_app(대시보드 뱃지) 만 권장.
+            장애 심각도에 따라 어느 채널로 알림을 보낼지. 긴급은 보통 모든 채널,
+            참고는 인앱(대시보드 뱃지)만 권장합니다.
           </v-card-subtitle>
           <v-card-text>
             <v-table density="comfortable">
               <thead>
                 <tr>
-                  <th style="width: 110px">severity</th>
+                  <th style="width: 110px">심각도</th>
                   <th>발송 채널</th>
                 </tr>
               </thead>
@@ -66,7 +64,7 @@
                     </v-chip>
                   </td>
                   <td>
-                    <div class="d-flex" style="gap: 14px; flex-wrap: wrap">
+                    <div class="severity-channel-cell d-flex flex-wrap">
                       <v-checkbox
                         v-for="ch in channelOptions"
                         :key="ch.value"
@@ -86,72 +84,75 @@
         </v-card>
       </v-col>
 
-      <!-- 근무시간 외 silence -->
-      <v-col cols="12" md="5">
-        <v-card>
+      <!-- 야간/주말 알림 끄기 -->
+      <v-col cols="12" md="6">
+        <v-card height="100%">
           <v-card-title>
             <v-icon icon="mdi-bell-sleep-outline" class="mr-2" />
-            근무시간 외 silence
+            야간/주말 알림 끄기
           </v-card-title>
           <v-card-subtitle>
-            지정된 시간대 / 주말에 알림 폭주 방지. critical 만 별도로 깨우는 옵션 권장 (기본 ON).
+            지정된 시간대 / 주말에는 알림을 보내지 않습니다. 긴급 단계만 별도로 깨우는
+            옵션을 권장합니다 (기본 켜짐).
           </v-card-subtitle>
-          <v-card-text>
+          <v-card-text class="quiet-hours-card">
             <v-switch
               v-model="rule.quiet_hours_enabled"
-              label="시간대 silence 활성"
+              label="시간대 알림 끄기 사용"
               color="primary"
-              density="comfortable"
+              density="compact"
               hide-details
-              class="mb-2"
+              class="mb-3"
             />
             <v-row dense :class="rule.quiet_hours_enabled ? '' : 'text-medium-emphasis'">
               <v-col cols="6">
                 <v-text-field
                   v-model.number="rule.quiet_hours_start"
-                  label="silence 시작 (시)"
+                  label="알림 끄기 시작 (시)"
                   type="number"
                   min="0"
                   max="23"
-                  density="comfortable"
+                  density="compact"
                   variant="outlined"
+                  hide-details
                   :disabled="!rule.quiet_hours_enabled"
                 />
               </v-col>
               <v-col cols="6">
                 <v-text-field
                   v-model.number="rule.quiet_hours_end"
-                  label="silence 종료 (시)"
+                  label="알림 끄기 종료 (시)"
                   type="number"
                   min="0"
                   max="23"
-                  density="comfortable"
+                  density="compact"
                   variant="outlined"
+                  hide-details
                   :disabled="!rule.quiet_hours_enabled"
                 />
               </v-col>
             </v-row>
-            <div class="text-caption text-medium-emphasis mb-2">
-              KST 24시 기준. start &gt; end 면 자정 넘김 (예: 22 → 8 = 22시~익일 8시).
+            <div class="text-caption text-medium-emphasis mt-2">
+              한국 시간(0~23시) 기준. 시작 시각이 종료 시각보다 크면 자정을 넘어갑니다
+              (예: 22 → 8 = 밤 10시 ~ 다음 날 아침 8시).
               현재 설정: <strong>{{ quietHoursPreview }}</strong>
             </div>
 
-            <v-divider class="my-3" />
+            <v-divider class="my-2" />
 
             <v-switch
               v-model="rule.quiet_hours_skip_critical"
-              label="critical 은 silence 무시 (권장 ON)"
+              label="긴급 알림은 끄기 시간에도 보냄 (권장)"
               color="error"
-              density="comfortable"
+              density="compact"
               hide-details
-              class="mb-2"
               :disabled="!rule.quiet_hours_enabled && !rule.weekend_silence"
             />
             <v-switch
               v-model="rule.weekend_silence"
-              label="주말 (토/일) 종일 silence"
+              label="주말 (토/일) 종일 알림 끄기"
               color="amber-darken-2"
-              density="comfortable"
+              density="compact"
               hide-details
             />
           </v-card-text>
@@ -163,19 +164,19 @@
     <v-card v-if="rule" class="mt-4">
       <v-card-title>
         <v-icon icon="mdi-flask-outline" class="mr-2" />
-        현재 설정 시뮬레이션
+        현재 설정 미리 보기
       </v-card-title>
       <v-card-text>
         <div class="text-caption text-medium-emphasis mb-2">
-          지금 (KST {{ nowLabel }}) 이 시간에 인터페이스가 모든 채널 (in_app/slack/email) 허용 상태로
-          장애를 일으켰다면 어느 채널이 실제 발송될지.
+          지금 시각 (한국 시간 {{ nowLabel }}) 에 어떤 인터페이스가 모든 채널을 허용한 상태로
+          장애를 일으켰다면, 위 정책에 따라 실제로 어느 채널에 알림이 발송될지를 보여줍니다.
         </div>
         <v-table density="compact">
           <thead>
             <tr>
-              <th>severity</th>
-              <th>전역 룰 채널</th>
-              <th>silence?</th>
+              <th>심각도</th>
+              <th>정책상 발송 채널</th>
+              <th>현재 발송 여부</th>
               <th>실제 발송</th>
             </tr>
           </thead>
@@ -185,13 +186,15 @@
                 <v-chip size="x-small" :color="row.color" variant="flat">{{ row.severity }}</v-chip>
               </td>
               <td>
-                <span class="text-caption">{{ row.allowed.join(', ') || '(없음)' }}</span>
+                <span class="text-caption">{{ row.allowed.map(channelLabel).join(', ') || '(없음)' }}</span>
               </td>
               <td>
                 <v-chip v-if="row.silenced" size="x-small" color="grey" variant="flat" prepend-icon="mdi-bell-off-outline">
                   {{ row.silenceReason }}
                 </v-chip>
-                <span v-else class="text-caption text-success">정상</span>
+                <v-chip v-else size="x-small" color="success" variant="tonal" prepend-icon="mdi-bell-ring-outline">
+                  발송
+                </v-chip>
               </td>
               <td>
                 <v-chip
@@ -202,9 +205,9 @@
                   variant="tonal"
                   class="mr-1"
                 >
-                  {{ ch }}
+                  {{ channelLabel(ch) }}
                 </v-chip>
-                <span v-if="!row.effective.length" class="text-caption text-medium-emphasis">— skip —</span>
+                <span v-if="!row.effective.length" class="text-caption text-medium-emphasis">— 보내지 않음 —</span>
               </td>
             </tr>
           </tbody>
@@ -226,15 +229,19 @@ const saving = ref(false);
 const snack = reactive({ show: false, text: '', color: 'success' });
 
 const channelOptions: { value: AlertChannel; label: string }[] = [
-  { value: 'in_app', label: '인앱 (대시보드 뱃지·toast)' },
+  { value: 'in_app', label: '인앱 알림 (대시보드 뱃지·팝업)' },
   { value: 'slack', label: 'Slack' },
-  { value: 'email', label: 'Email' },
+  { value: 'email', label: '이메일' },
 ];
 
+function channelLabel(ch: string): string {
+  return ({ in_app: '인앱', slack: 'Slack', email: '이메일' } as Record<string, string>)[ch] ?? ch;
+}
+
 const severityRows = [
-  { key: 'info_channels', label: 'info', icon: 'mdi-information-outline', color: 'info' },
-  { key: 'warning_channels', label: 'warning', icon: 'mdi-alert-outline', color: 'warning' },
-  { key: 'critical_channels', label: 'critical', icon: 'mdi-fire', color: 'error' },
+  { key: 'info_channels', label: '참고', icon: 'mdi-information-outline', color: 'info' },
+  { key: 'warning_channels', label: '주의', icon: 'mdi-alert-outline', color: 'warning' },
+  { key: 'critical_channels', label: '긴급', icon: 'mdi-fire', color: 'error' },
 ];
 
 function notify(text: string, color: 'success' | 'error' | 'warning' = 'success') {
@@ -319,9 +326,10 @@ const simRows = computed(() => {
     const allowed = (rule.value as any)[sr.key] as AlertChannel[];
     let silenced = false;
     let reason = '';
-    if (inWeekend) { silenced = true; reason = '주말 silence'; }
-    else if (inQuietHours) { silenced = true; reason = '근무시간 외'; }
-    if (silenced && sr.label === 'critical' && rule.value!.quiet_hours_skip_critical) {
+    if (inWeekend) { silenced = true; reason = '주말 차단'; }
+    else if (inQuietHours) { silenced = true; reason = '야간 차단'; }
+    // 긴급 단계는 "끄기 시간에도 보냄" 옵션이 켜져 있으면 silence 무시
+    if (silenced && sr.label === '긴급' && rule.value!.quiet_hours_skip_critical) {
       silenced = false;
       reason = '';
     }
@@ -339,3 +347,41 @@ const simRows = computed(() => {
 import { onBeforeUnmount } from 'vue';
 onBeforeUnmount(() => clearInterval(nowTimer));
 </script>
+
+<style scoped>
+/* v-card-subtitle 기본은 한 줄 ellipsis — 안내 문구는 잘리지 않게 wrap 허용 */
+:deep(.v-card-subtitle) {
+  white-space: normal;
+  overflow: visible;
+  text-overflow: clip;
+  -webkit-line-clamp: unset;
+  line-height: 1.4;
+  padding-bottom: 8px;
+}
+
+/* severity 별 채널 체크박스 — wrap 시 행 간격 너무 벌어지는 문제 해결.
+   v-checkbox 의 기본 min-height 가 40px+ 라 좁은 화면에서 두 줄로 wrap 되면
+   체크박스 사이 빈 공간이 크게 느껴짐. column-gap 14px / row-gap 4px 로
+   분리하고 v-checkbox 자체 min-height 도 28px 로 압축. */
+.severity-channel-cell {
+  column-gap: 14px;
+  row-gap: 4px;
+}
+.severity-channel-cell :deep(.v-checkbox),
+.severity-channel-cell :deep(.v-selection-control) {
+  min-height: 28px;
+}
+.severity-channel-cell :deep(.v-selection-control__wrapper) {
+  height: 28px;
+}
+
+/* 야간/주말 알림 끄기 카드 — 좌측 심각도 카드와 세로 길이 맞추기 위해
+   v-switch 의 기본 min-height 압축. */
+.quiet-hours-card :deep(.v-switch),
+.quiet-hours-card :deep(.v-selection-control) {
+  min-height: 32px;
+}
+.quiet-hours-card :deep(.v-selection-control__wrapper) {
+  height: 32px;
+}
+</style>

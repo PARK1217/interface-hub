@@ -328,6 +328,16 @@ SEED_CATEGORY: dict[str, InterfaceCategory] = {
 }
 
 
+# 인증 키 만료일 — 일부 인터페이스에 시연용. 음수 = 이미 만료, 0~3 = 긴급, 4~7 = 임박.
+# Interfaces 페이지의 D-N 칩 + secret_expiry cron 의 알림 발송 대상.
+SEED_SECRET_EXPIRY_DAYS: dict[str, int] = {
+    "신용정보원-CB조회": -2,                # 이미 2일 전 만료 (긴급)
+    "마이데이터허브-자산스크래핑": 2,         # D-2 (긴급)
+    "보험개발원-실손중복청구확인": 5,         # D-5 (임박)
+    "토스페이먼츠-자동이체": 30,             # D-30 (정상 — 칩 표시 안 됨)
+}
+
+
 # 자동 재시도 정책 — 5xx/timeout 흔한 외부 기관에 우선 적용.
 # RetryAnalytics 페이지에서 효과 시각화의 데이터 소스.
 SEED_RETRY_POLICY: dict[str, tuple[int, float]] = {
@@ -790,6 +800,10 @@ def main() -> None:
         name_to_itf: dict[str, Interface] = {}
         for spec in SEED_INTERFACES:
             retry_max, retry_backoff = SEED_RETRY_POLICY.get(spec["name"], (0, 1.0))
+            expiry_days = SEED_SECRET_EXPIRY_DAYS.get(spec["name"])
+            expires_at = (
+                NOW + timedelta(days=expiry_days) if expiry_days is not None else None
+            )
             itf = Interface(
                 name=spec["name"],
                 organization=spec["organization"],
@@ -809,6 +823,7 @@ def main() -> None:
                 enabled=True,
                 retry_max=retry_max,
                 retry_backoff_seconds=retry_backoff,
+                auth_secret_expires_at=expires_at,
             )
             db.add(itf)
             db.flush()

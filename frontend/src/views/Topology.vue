@@ -15,9 +15,7 @@
     </div>
 
     <v-alert type="info" variant="tonal" density="compact" class="mb-4">
-      기획서 1번 항목 — <strong>사내 핵심 시스템 ↔ 외부 기관(금감원, 제휴사 등)</strong> 간
-      다수의 인터페이스를 단일 화면에서 제어하는 의존성 지도입니다.
-      카드 클릭 시 인터페이스 상세로 이동.
+      <strong>사내 핵심 시스템 ↔ 외부 기관</strong> 인터페이스 의존성 지도. 카드 클릭 시 상세 이동.
     </v-alert>
 
     <v-row v-if="loaded">
@@ -213,7 +211,7 @@
 <script setup lang="ts">
 import { computed, onMounted, ref, watch } from 'vue';
 import { useRouter } from 'vue-router';
-import { Interfaces, CallLogs, type InterfaceItem } from '@/api/client';
+import { Interfaces, Performance, type InterfaceItem } from '@/api/client';
 
 const router = useRouter();
 
@@ -226,17 +224,15 @@ const windowDays = ref(7);
 async function loadAll() {
   loading.value = true;
   try {
-    const itfRes = await Interfaces.list({ include_deleted: false });
+    // 인터페이스 목록 + 인터페이스별 집계 통계 (percentiles 가 이미 GROUP BY interface_id 결과)
+    const [itfRes, perfRes] = await Promise.all([
+      Interfaces.list({ include_deleted: false }),
+      Performance.percentiles(windowDays.value),
+    ]);
     allInterfaces.value = itfRes.data;
-    // 인터페이스별 호출 통계 — 한 번만 받아서 클라이언트에서 그룹핑
-    const since = new Date(Date.now() - windowDays.value * 86400_000).toISOString();
-    const statsRes = await CallLogs.search({ since, limit: 5000 });
     const map = new Map<number, { total: number; failures: number }>();
-    for (const log of statsRes.data as any[]) {
-      const cur = map.get(log.interface_id) ?? { total: 0, failures: 0 };
-      cur.total += 1;
-      if (log.status !== 'SUCCESS') cur.failures += 1;
-      map.set(log.interface_id, cur);
+    for (const r of perfRes.data) {
+      map.set(r.interface_id, { total: r.total_calls, failures: r.failure_count });
     }
     statsByInterface.value = map;
     loaded.value = true;

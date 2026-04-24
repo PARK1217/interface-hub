@@ -575,16 +575,22 @@ class RagService:
             return res
 
         # LLM 호출 (정상 경로 — 사례가 충분히 매칭됨)
-        context = "\n\n---\n\n".join(c["content"] for c in cases)
+        # incident id 를 명시해 LLM 이 답변에 근거 사례 ID 를 인용할 수 있도록.
+        context = "\n\n---\n\n".join(
+            f"[incident #{c['incident_id']}]\n{c['content']}" for c in cases
+        )
         system = (
             "당신은 보험사 인터페이스 운영 어시스턴트입니다. 아래 제공된 과거 사례만 "
-            "근거로 한국어로 답하세요. 사례에 없는 일반론은 추가하지 마세요."
+            "근거로 한국어로 답하세요. 사례에 없는 일반론은 추가하지 마세요. "
+            "특정 과거 사례를 인용할 땐 반드시 markdown 링크 형식 "
+            "`[#42](/incidents?focus=42)` 처럼 작성하세요 (운영자가 클릭해 상세 이동)."
         )
         prompt = (
             f"[과거 장애 사례 Top-{len(cases)}]\n{context}\n\n"
             f"[신규 장애 질문]\n{question}\n\n"
             "위 사례를 참고해 다음 형식으로 답변:\n"
-            "1) 원인 가설 (Top-1)\n2) 추가 점검 항목\n3) 권장 조치 절차"
+            "1) 원인 가설 (Top-1) — 근거 사례 [#ID](/incidents?focus=ID) 인용\n"
+            "2) 추가 점검 항목\n3) 권장 조치 절차"
         )
         llm_res, attempts = await self._call_llm(prompt, system=system)
         if isinstance(llm_res, LLMError):

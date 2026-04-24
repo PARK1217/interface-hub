@@ -63,6 +63,8 @@ export interface InterfaceItem {
   timeout_seconds?: number | null;
   retry_max?: number;
   retry_backoff_seconds?: number;
+  // 인증 키 만료일 (선택). 임박 시 자동 알림.
+  auth_secret_expires_at?: string | null;
   created_at: string;
   updated_at: string;
   deleted_at?: string | null;
