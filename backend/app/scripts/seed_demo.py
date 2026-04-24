@@ -26,7 +26,7 @@ from app.core.time import now_kst
 from app.models import CallLog, Incident, Interface, SlaTarget, User, UserRole
 from app.models.call_log import CallStatus
 from app.models.incident import IncidentType
-from app.models.interface import AuthType, ProtocolType
+from app.models.interface import AuthType, InterfaceCategory, ProtocolType
 
 random.seed(42)
 NOW = now_kst()
@@ -238,7 +238,58 @@ SEED_INTERFACES: list[dict] = [
             "content": "interface,uptime,p95\nKIDI-실손,98.66,194\n",
         },
     },
+    # ─── Phase B.12: 내부 핵심 시스템 (기획서 1번 항목 — 외부 기관과 함께 통합 관제) ───
+    {
+        "name": "사내-보험금계산엔진",
+        "organization": "사내 / Claims Engine",
+        "description": "지급 보험금 산출 엔진 (사내 ESB 경유). 외부 호출 직전 항상 호출됨.",
+        "protocol": ProtocolType.REST,
+        "endpoint": "https://internal-esb.noa.local/claims/calculate",
+        "method": "POST",
+        "schedule_cron": None,
+        "auth_type": AuthType.BEARER,
+        "rps": 18.0, "fail_rate": 0.008, "latency_ms": (95, 30),  # 내부망 빠름·안정
+        "sla": (99.9, 300),
+    },
+    {
+        "name": "사내-CB평가모듈",
+        "organization": "사내 / Risk Engine",
+        "description": "신용 리스크 평가 모듈 (사내 호스트). KCIS CB 조회 결과를 받아 자체 점수 산출.",
+        "protocol": ProtocolType.REST,
+        "endpoint": "https://internal-risk.noa.local/score/v2",
+        "method": "POST",
+        "schedule_cron": None,
+        "auth_type": AuthType.BEARER,
+        "rps": 9.0, "fail_rate": 0.005, "latency_ms": (130, 40),
+        "sla": (99.9, 400),
+    },
 ]
+
+
+# Phase B.12 — 인터페이스 이름 → category 매핑.
+# 시드 데이터의 14개 외부 + 2개 내부를 정확히 분류. 운영자가 등록 다이얼로그에서
+# 직접 고르는 게 정상이지만 시드는 평가관에게 "분류 시스템이 동작한다" 보여주는 용도.
+SEED_CATEGORY: dict[str, InterfaceCategory] = {
+    # 규제·공공기관
+    "보험개발원-실손중복청구확인": InterfaceCategory.EXTERNAL_REGULATOR,
+    "신용정보원-CB조회": InterfaceCategory.EXTERNAL_REGULATOR,
+    "건강보험심사평가원-요양기관조회": InterfaceCategory.EXTERNAL_REGULATOR,
+    "도로교통공단-운전면허확인": InterfaceCategory.EXTERNAL_REGULATOR,
+    "국세청-사업자상태조회": InterfaceCategory.EXTERNAL_REGULATOR,
+    "마이데이터허브-자산스크래핑": InterfaceCategory.EXTERNAL_REGULATOR,
+    "금감원-전산사고보고": InterfaceCategory.EXTERNAL_REGULATOR,
+    "보험개발원-차량시세-MQ": InterfaceCategory.EXTERNAL_REGULATOR,
+    "보험개발원-일일보험료정산-Batch": InterfaceCategory.EXTERNAL_REGULATOR,
+    "금융결제원-자동이체결과수신-Batch": InterfaceCategory.EXTERNAL_REGULATOR,
+    "마이데이터-야간배치파일-SFTP": InterfaceCategory.EXTERNAL_REGULATOR,
+    "보험개발원-SLA리포트업로드-SFTP": InterfaceCategory.EXTERNAL_REGULATOR,
+    # 제휴사 (PG / 메시징 등 영리 사업자)
+    "카카오알림톡-청구알림발송": InterfaceCategory.EXTERNAL_PARTNER,
+    "토스페이먼츠-자동이체": InterfaceCategory.EXTERNAL_PARTNER,
+    # 사내 핵심
+    "사내-보험금계산엔진": InterfaceCategory.INTERNAL_CORE,
+    "사내-CB평가모듈": InterfaceCategory.INTERNAL_CORE,
+}
 
 
 # Resolved historical incidents — for both UI history and RAG index seeding.
@@ -673,6 +724,7 @@ def main() -> None:
             itf = Interface(
                 name=spec["name"],
                 organization=spec["organization"],
+                category=SEED_CATEGORY.get(spec["name"], InterfaceCategory.EXTERNAL_PARTNER),
                 description=spec["description"],
                 protocol=spec["protocol"],
                 endpoint=spec["endpoint"],

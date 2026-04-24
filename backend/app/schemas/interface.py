@@ -6,13 +6,15 @@ from typing import Any
 from croniter import croniter
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 
-from app.models.interface import AuthType, ProtocolType
+from app.models.interface import AuthType, InterfaceCategory, ProtocolType
 
 
 class InterfaceBase(BaseModel):
     name: str = Field(..., min_length=1, max_length=120)
     description: str | None = None
     organization: str | None = None
+    # Phase B.12 — 통합 관제 분류 (내부 핵심 / 외부 제휴 / 외부 규제기관)
+    category: InterfaceCategory = InterfaceCategory.EXTERNAL_PARTNER
     protocol: ProtocolType = ProtocolType.REST
     endpoint: str = Field(..., min_length=1, max_length=500)
     method: str = Field("GET", max_length=10)
@@ -47,6 +49,7 @@ class InterfaceUpdate(BaseModel):
     name: str | None = None
     description: str | None = None
     organization: str | None = None
+    category: InterfaceCategory | None = None
     protocol: ProtocolType | None = None
     endpoint: str | None = None
     method: str | None = None

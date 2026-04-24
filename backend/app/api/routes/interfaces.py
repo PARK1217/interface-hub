@@ -9,7 +9,7 @@ from app.api.deps import get_current_user, get_db, require_role
 from app.core.security import decrypt_secret, encrypt_secret
 from app.core.time import now_kst
 from app.models import Interface, User, UserRole
-from app.models.interface import ProtocolType
+from app.models.interface import InterfaceCategory, ProtocolType
 from app.schemas.interface import (
     InterfaceCreate,
     InterfaceOut,
@@ -62,6 +62,7 @@ def list_interfaces(
     enabled: bool | None = None,
     organization: str | None = None,
     protocol: ProtocolType | None = None,
+    category: InterfaceCategory | None = None,
     include_deleted: bool = False,
     only_deleted: bool = False,
     db: Session = Depends(get_db),
@@ -78,6 +79,8 @@ def list_interfaces(
         stmt = stmt.where(Interface.organization == organization)
     if protocol is not None:
         stmt = stmt.where(Interface.protocol == protocol)
+    if category is not None:
+        stmt = stmt.where(Interface.category == category)
     return [_to_out(i) for i in db.scalars(stmt.order_by(Interface.id.desc())).all()]
 
 

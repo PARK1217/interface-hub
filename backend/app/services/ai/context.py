@@ -138,6 +138,34 @@ def build_stats_context(db: Session, *, days: int = 7, top_n: int = 10) -> str:
     except Exception:  # noqa: BLE001
         pass
 
+    # Phase B.12 — 카테고리별 (내부 핵심 / 외부 제휴 / 외부 규제기관) 분리 집계
+    # 운영자가 "지금 외부 기관 쪽이 더 문제야 내부 모듈 쪽이 더 문제야?" 같은 질문을
+    # 했을 때 AI 가 사실 기반으로 답변할 수 있도록.
+    cat_rows = db.execute(
+        select(
+            Interface.category,
+            func.count(CallLog.id).label("total"),
+            func.coalesce(func.sum(failure_expr), 0).label("failures"),
+        )
+        .join(CallLog, CallLog.interface_id == Interface.id)
+        .where(CallLog.called_at >= since)
+        .group_by(Interface.category)
+    ).all()
+    if cat_rows:
+        cat_label = {
+            "INTERNAL_CORE": "내부 핵심 시스템",
+            "EXTERNAL_PARTNER": "외부 제휴사",
+            "EXTERNAL_REGULATOR": "외부 규제기관",
+        }
+        lines += ["", f"### 분류별 호출/실패율 (최근 {days}일)"]
+        lines += ["| 분류 | 호출수 | 실패수 | 실패율 |", "|---|---:|---:|---:|"]
+        for r in cat_rows:
+            key = r.category.value if hasattr(r.category, "value") else r.category
+            rate = (r.failures / r.total * 100) if r.total else 0.0
+            lines.append(
+                f"| {cat_label.get(key, key)} | {r.total} | {r.failures} | {rate:.1f}% |"
+            )
+
     # 미해결 incident 인터페이스별 카운트
     open_incidents = db.execute(
         select(

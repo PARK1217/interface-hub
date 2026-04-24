@@ -1,4 +1,4 @@
-from .interface import Interface, ProtocolType, AuthType
+from .interface import Interface, ProtocolType, AuthType, InterfaceCategory
 from .call_log import CallLog, CallStatus
 from .incident import Incident, IncidentType
 from .sla_target import SlaTarget
@@ -12,6 +12,7 @@ __all__ = [
     "Interface",
     "ProtocolType",
     "AuthType",
+    "InterfaceCategory",
     "CallLog",
     "CallStatus",
     "Incident",

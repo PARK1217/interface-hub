@@ -21,6 +21,19 @@
         <v-row dense>
           <v-col cols="12" md="3">
             <v-select
+              v-model="filter.category"
+              :items="categoryFilterOptions"
+              item-title="label"
+              item-value="value"
+              label="분류 (내부/외부)"
+              clearable
+              density="compact"
+              hide-details
+              @update:model-value="load"
+            />
+          </v-col>
+          <v-col cols="12" md="2">
+            <v-select
               v-model="filter.protocol"
               :items="protocolOptions"
               label="프로토콜"
@@ -30,7 +43,7 @@
               @update:model-value="load"
             />
           </v-col>
-          <v-col cols="12" md="4">
+          <v-col cols="12" md="3">
             <v-select
               v-model="filter.organization"
               :items="organizationOptions"
@@ -89,6 +102,17 @@
         density="comfortable"
         :row-props="rowProps"
       >
+        <template #item.category="{ item }">
+          <v-chip
+            size="small"
+            :color="categoryMeta(item.category).color"
+            variant="tonal"
+            :prepend-icon="categoryMeta(item.category).icon"
+            :title="categoryMeta(item.category).desc"
+          >
+            {{ categoryMeta(item.category).label }}
+          </v-chip>
+        </template>
         <template #item.protocol="{ item }">
           <v-chip size="small" :color="protocolColor(item.protocol)">{{ item.protocol }}</v-chip>
         </template>
@@ -259,6 +283,30 @@
             </v-col>
             <v-col cols="12" md="6">
               <v-text-field v-model="form.organization" label="기관" density="comfortable" variant="outlined" />
+            </v-col>
+            <v-col cols="12" md="6">
+              <v-select
+                v-model="form.category"
+                :items="categoryOptions"
+                item-title="label"
+                item-value="value"
+                label="분류 *"
+                density="comfortable"
+                variant="outlined"
+                hint="기획서 1번 항목 — 내부 핵심 시스템 / 외부 제휴사 / 외부 규제기관"
+                persistent-hint
+              >
+                <template #item="{ props, item }">
+                  <v-list-item v-bind="props">
+                    <template #prepend>
+                      <v-icon :icon="item.raw.icon" :color="item.raw.color" />
+                    </template>
+                    <template #subtitle>
+                      <span class="text-caption">{{ item.raw.desc }}</span>
+                    </template>
+                  </v-list-item>
+                </template>
+              </v-select>
             </v-col>
           </v-row>
 
@@ -698,14 +746,46 @@ const weekdayChoices = [
 
 const protocolOptions = ['REST', 'SOAP', 'FTP', 'MQ', 'BATCH'];
 
+// Phase B.12 — 통합 관제 분류 (기획서 1번 항목)
+const categoryOptions = [
+  {
+    value: 'INTERNAL_CORE',
+    label: '내부 핵심 시스템',
+    desc: '사내 보험금계산엔진·CB평가·ESB 등',
+    color: 'deep-purple',
+    icon: 'mdi-server-network',
+  },
+  {
+    value: 'EXTERNAL_PARTNER',
+    label: '외부 제휴사',
+    desc: 'PG / 카카오 / 마이데이터 사업자 등',
+    color: 'teal',
+    icon: 'mdi-handshake-outline',
+  },
+  {
+    value: 'EXTERNAL_REGULATOR',
+    label: '외부 규제기관',
+    desc: '금감원 / 신용정보원 / 국세청 / 보험개발원 등',
+    color: 'red-darken-2',
+    icon: 'mdi-bank-outline',
+  },
+];
+const categoryFilterOptions = categoryOptions.map((c) => ({ value: c.value, label: c.label }));
+
+function categoryMeta(c: string | null | undefined) {
+  return categoryOptions.find((o) => o.value === c) ?? categoryOptions[1];
+}
+
 const filter = reactive<{
   protocol: string | null;
   organization: string | null;
+  category: string | null;
   enabledOnly: boolean;
   trashOnly: boolean;
 }>({
   protocol: null,
   organization: null,
+  category: null,
   enabledOnly: false,
   trashOnly: false,
 });
@@ -716,6 +796,7 @@ const organizationOptions = computed(() =>
 
 const headers = [
   { title: 'ID', key: 'id', width: 60 },
+  { title: '분류', key: 'category', width: 130 },
   { title: '이름', key: 'name' },
   { title: '기관', key: 'organization' },
   { title: '프로토콜', key: 'protocol' },
@@ -942,6 +1023,7 @@ async function load() {
     const params: Record<string, unknown> = {};
     if (filter.protocol) params.protocol = filter.protocol;
     if (filter.organization) params.organization = filter.organization;
+    if (filter.category) params.category = filter.category;
     if (filter.trashOnly) {
       params.only_deleted = true;
     } else if (filter.enabledOnly) {
@@ -962,6 +1044,7 @@ function openCreate() {
     id: undefined,
     name: '',
     organization: '',
+    category: 'EXTERNAL_PARTNER',
     protocol: 'REST',
     method: 'GET',
     endpoint: '',

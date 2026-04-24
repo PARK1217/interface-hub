@@ -84,6 +84,13 @@ _DEMO_MIGRATIONS: list[str] = [
     "ALTER TABLE interfaces ADD COLUMN IF NOT EXISTS retry_max INTEGER NOT NULL DEFAULT 0",
     "ALTER TABLE interfaces ADD COLUMN IF NOT EXISTS retry_backoff_seconds DOUBLE PRECISION NOT NULL DEFAULT 1.0",
     "ALTER TABLE call_logs ADD COLUMN IF NOT EXISTS attempt_count INTEGER NOT NULL DEFAULT 1",
+    # Phase B.12 — 인터페이스 카테고리 (내부 핵심 / 외부 제휴 / 외부 규제기관)
+    # PG 의 ENUM 은 트랜잭션 안에서 까다로워 IF NOT EXISTS 로 안전 추가.
+    """DO $$ BEGIN
+        CREATE TYPE interfacecategory AS ENUM ('INTERNAL_CORE', 'EXTERNAL_PARTNER', 'EXTERNAL_REGULATOR');
+    EXCEPTION WHEN duplicate_object THEN NULL; END $$""",
+    "ALTER TABLE interfaces ADD COLUMN IF NOT EXISTS category interfacecategory NOT NULL DEFAULT 'EXTERNAL_PARTNER'",
+    "CREATE INDEX IF NOT EXISTS ix_interfaces_category ON interfaces(category)",
     # Phase B.10 전역 알림 룰 (severity 라우팅 + 근무시간 외 silence)
     """CREATE TABLE IF NOT EXISTS alert_rules (
         id SERIAL PRIMARY KEY,

@@ -36,12 +36,14 @@ api.interceptors.response.use(
 );
 
 export type AlertChannel = 'in_app' | 'slack' | 'email';
+export type InterfaceCategory = 'INTERNAL_CORE' | 'EXTERNAL_PARTNER' | 'EXTERNAL_REGULATOR';
 
 export interface InterfaceItem {
   id: number;
   name: string;
   description?: string | null;
   organization?: string | null;
+  category?: InterfaceCategory;
   protocol: 'REST' | 'SOAP' | 'FTP' | 'MQ' | 'BATCH';
   endpoint: string;
   method: string;

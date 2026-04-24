@@ -25,6 +25,22 @@ class AuthType(str, enum.Enum):
     BEARER = "BEARER"
 
 
+class InterfaceCategory(str, enum.Enum):
+    """기획서 1번 항목 — 통합 관제 대상 분류 (Phase B.12).
+
+    "내부 핵심 시스템과 외부 기관(금감원, 제휴사 등) 간 다수의 인터페이스를
+    단일 화면에서 제어" 라는 기획 의도를 시스템상 1급 시민으로 표현. 단순
+    문자열(organization) 만으로는 통계 분리·필터·라우팅 정책 적용 불가.
+
+    - INTERNAL_CORE        : 사내 핵심 시스템 (보험금계산엔진, CB평가모듈, 사내 ESB 등)
+    - EXTERNAL_PARTNER     : 제휴사 (PG, 카카오 비즈메시지, 마이데이터 사업자 등)
+    - EXTERNAL_REGULATOR   : 규제·공공기관 (금감원, 신용정보원, 국세청, 보험개발원 등)
+    """
+    INTERNAL_CORE = "INTERNAL_CORE"
+    EXTERNAL_PARTNER = "EXTERNAL_PARTNER"
+    EXTERNAL_REGULATOR = "EXTERNAL_REGULATOR"
+
+
 class Interface(Base):
     __tablename__ = "interfaces"
 
@@ -34,6 +50,12 @@ class Interface(Base):
     organization: Mapped[str | None] = mapped_column(String(120), default=None, index=True)
 
     protocol: Mapped[ProtocolType] = mapped_column(Enum(ProtocolType), default=ProtocolType.REST)
+    # Phase B.12 — 통합 관제 대상 분류. 운영자가 의도적으로 선택. 기존 데이터는
+    # 마이그레이션에서 EXTERNAL_PARTNER 로 시작 (안전한 기본값 — 외부로 가정).
+    category: Mapped[InterfaceCategory] = mapped_column(
+        Enum(InterfaceCategory), default=InterfaceCategory.EXTERNAL_PARTNER,
+        nullable=False, index=True,
+    )
     endpoint: Mapped[str] = mapped_column(String(500))
     method: Mapped[str] = mapped_column(String(10), default="GET")  # for REST/SOAP
 
