@@ -51,6 +51,17 @@ class Interface(Base):
     response_ms_threshold: Mapped[int | None] = mapped_column(Integer, default=None)
     failure_rate_threshold: Mapped[float | None] = mapped_column(default=None)
 
+    # --- Phase B.7 알림 룰 -------------------------------------------------
+    # muted_until: 이 시각까지 알림 발송 중단 (정기 점검 시간 등). null=음소거 X.
+    #   incident 자체는 그대로 생성되어 기록은 남고, 대시보드/incidents 페이지의
+    #   카운트도 갱신됨. "알림 시끄러움"만 끔.
+    # alert_channels: 발송할 채널 화이트리스트. 기본 3종 모두. 인터페이스별로
+    #   "이 KIDI 는 Slack 만, 다른 건 in-app 만" 식으로 운영자 라우팅 가능.
+    muted_until: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), default=None)
+    alert_channels: Mapped[list | None] = mapped_column(
+        JSON, default=lambda: ["in_app", "slack", "email"]
+    )
+
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
     updated_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now(), onupdate=func.now()

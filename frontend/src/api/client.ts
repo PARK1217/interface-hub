@@ -35,6 +35,8 @@ api.interceptors.response.use(
   },
 );
 
+export type AlertChannel = 'in_app' | 'slack' | 'email';
+
 export interface InterfaceItem {
   id: number;
   name: string;
@@ -51,6 +53,8 @@ export interface InterfaceItem {
   has_secret?: boolean;
   response_ms_threshold?: number | null;
   failure_rate_threshold?: number | null;
+  muted_until?: string | null;
+  alert_channels?: AlertChannel[] | null;
   created_at: string;
   updated_at: string;
   deleted_at?: string | null;
@@ -134,6 +138,9 @@ export const Interfaces = {
       `/interfaces/${id}/reveal-secret`,
       { reason },
     ),
+  mute: (id: number, minutes: number) =>
+    api.post<InterfaceItem>(`/interfaces/${id}/mute`, null, { params: { minutes } }),
+  unmute: (id: number) => api.post<InterfaceItem>(`/interfaces/${id}/unmute`),
 };
 
 export interface HeatmapCell {
@@ -211,10 +218,37 @@ export const Sla = {
   exportXlsxUrl: (days = 30) => `/api/sla/export.xlsx?days=${days}`,
 };
 
+export interface PopularQuestion {
+  question: string;
+  count: number;
+  last_asked_at: string;
+}
+
+export interface AiHistoryItem {
+  id: number;
+  question: string;
+  mode: string;
+  provider: string | null;
+  cached: boolean;
+  llm_error_kind: string | null;
+  response_excerpt: string | null;
+  asked_at: string;
+}
+
+export interface AiSuggestion {
+  text: string;
+  source: 'popular' | 'interface_template' | 'incident_recent';
+  interface_id?: number | null;
+}
+
 export const AI = {
   ask: (question: string, top_k = 3) => api.post('/ai/ask', { question, top_k }),
   anomaly: (interfaceId: number) => api.get(`/ai/anomaly/${interfaceId}`),
   status: () => api.get<{ configured: boolean; provider: string; model: string | null }>('/ai/status'),
+  popular: (days = 14, limit = 10) =>
+    api.get<PopularQuestion[]>('/ai/popular-questions', { params: { days, limit } }),
+  myHistory: (limit = 20) => api.get<AiHistoryItem[]>('/ai/my-history', { params: { limit } }),
+  suggestions: (limit = 4) => api.get<AiSuggestion[]>('/ai/suggestions', { params: { limit } }),
 };
 
 export interface PercentileRow {

@@ -42,6 +42,9 @@ class Settings(BaseSettings):
     embedding_model: str = "text-embedding-3-small"
     llm_model: str = "gpt-4o-mini"  # legacy — ai_model 우선
 
+    # Phase B.8 — AI 응답 Redis 캐싱 TTL (초). 0 으로 두면 캐시 비활성.
+    ai_cache_ttl_seconds: int = 3600  # 1시간
+
     # Detection thresholds (defaults; per-interface overrides live in DB)
     default_response_ms_threshold: int = 3000
     default_failure_rate_threshold: float = 0.10  # 10%

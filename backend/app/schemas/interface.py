@@ -23,6 +23,9 @@ class InterfaceBase(BaseModel):
     enabled: bool = True
     response_ms_threshold: int | None = Field(default=None, ge=1)
     failure_rate_threshold: float | None = Field(default=None, ge=0.0, le=1.0)
+    # Phase B.7 알림 룰
+    muted_until: datetime | None = None
+    alert_channels: list[str] | None = None
 
     @field_validator("schedule_cron")
     @classmethod
@@ -54,6 +57,7 @@ class InterfaceUpdate(BaseModel):
     enabled: bool | None = None
     response_ms_threshold: int | None = None
     failure_rate_threshold: float | None = None
+    alert_channels: list[str] | None = None  # Phase B.7
 
     @field_validator("schedule_cron")
     @classmethod

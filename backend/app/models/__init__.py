@@ -5,6 +5,7 @@ from .sla_target import SlaTarget
 from .vector_case import VectorCase
 from .user import User, UserRole
 from .audit_log import AuditLog
+from .ai_query_log import AiQueryLog
 
 __all__ = [
     "Interface",
@@ -19,4 +20,5 @@ __all__ = [
     "User",
     "UserRole",
     "AuditLog",
+    "AiQueryLog",
 ]

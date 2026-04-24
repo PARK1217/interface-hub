@@ -103,33 +103,46 @@
           </v-chip>
         </template>
         <template #item.enabled="{ item }">
-          <v-chip
-            v-if="item.deleted_at"
-            size="small"
-            color="grey"
-            variant="tonal"
-            prepend-icon="mdi-archive-outline"
-          >
-            보관됨
-          </v-chip>
-          <v-chip
-            v-else-if="item.enabled"
-            size="small"
-            color="success"
-            variant="tonal"
-            prepend-icon="mdi-circle-medium"
-          >
-            활성
-          </v-chip>
-          <v-chip
-            v-else
-            size="small"
-            color="warning"
-            variant="tonal"
-            prepend-icon="mdi-pause-circle-outline"
-          >
-            일시중지
-          </v-chip>
+          <div class="d-flex align-center" style="gap: 4px; flex-wrap: wrap">
+            <v-chip
+              v-if="item.deleted_at"
+              size="small"
+              color="grey"
+              variant="tonal"
+              prepend-icon="mdi-archive-outline"
+            >
+              보관됨
+            </v-chip>
+            <v-chip
+              v-else-if="item.enabled"
+              size="small"
+              color="success"
+              variant="tonal"
+              prepend-icon="mdi-circle-medium"
+            >
+              활성
+            </v-chip>
+            <v-chip
+              v-else
+              size="small"
+              color="warning"
+              variant="tonal"
+              prepend-icon="mdi-pause-circle-outline"
+            >
+              일시중지
+            </v-chip>
+            <!-- Phase B.7 음소거 칩 — 남은 시간 표시 + 즉시 해제 -->
+            <v-chip
+              v-if="isMuted(item)"
+              size="x-small"
+              color="grey-darken-2"
+              variant="flat"
+              prepend-icon="mdi-bell-off-outline"
+              :title="`${formatDateTimeShort(item.muted_until)} 까지 음소거 (toast/Slack/Email skip, 기록은 유지)`"
+            >
+              음소거 {{ muteRemaining(item) }}
+            </v-chip>
+          </div>
         </template>
         <template #item.actions="{ item }">
           <template v-if="!item.deleted_at">
@@ -143,6 +156,35 @@
               title="실행"
               @click="run(item)"
             />
+            <!-- 🔕 음소거: OPERATOR 이상 (Phase B.7) -->
+            <v-menu v-if="auth.canMutate" location="bottom end">
+              <template #activator="{ props }">
+                <v-btn
+                  v-bind="props"
+                  :icon="isMuted(item) ? 'mdi-bell-off' : 'mdi-bell-outline'"
+                  variant="text"
+                  size="small"
+                  :color="isMuted(item) ? 'grey-darken-2' : ''"
+                  :title="isMuted(item) ? '음소거 중 — 클릭해 해제 또는 시간 변경' : '알림 음소거 (정기 점검 시간 등)'"
+                />
+              </template>
+              <v-list density="compact" min-width="180">
+                <v-list-subheader>음소거 시간</v-list-subheader>
+                <v-list-item
+                  v-for="m in muteOptions"
+                  :key="m.minutes"
+                  :title="m.label"
+                  @click="mute(item, m.minutes)"
+                />
+                <v-divider v-if="isMuted(item)" />
+                <v-list-item
+                  v-if="isMuted(item)"
+                  prepend-icon="mdi-bell-ring-outline"
+                  title="즉시 해제"
+                  @click="unmute(item)"
+                />
+              </v-list>
+            </v-menu>
             <!-- ✏️ 수정 / 🔓 시크릿 조회 / 📦 보관: ADMIN 만 -->
             <v-btn
               v-if="auth.isAdmin"
@@ -436,6 +478,25 @@
             </v-col>
           </v-row>
 
+          <div class="text-overline text-medium-emphasis mb-2 mt-4">알림 채널 (Phase B.7)</div>
+          <v-card variant="outlined" rounded="lg" class="pa-3 mb-2">
+            <div class="text-caption text-medium-emphasis mb-2">
+              장애 발생 시 어느 채널로 알림을 보낼지 선택. 모두 해제해도 incident 자체는 기록됨.
+            </div>
+            <div class="d-flex" style="gap: 12px; flex-wrap: wrap">
+              <v-checkbox
+                v-for="ch in alertChannelOptions"
+                :key="ch.value"
+                :model-value="formChannels.includes(ch.value)"
+                :label="ch.label"
+                hide-details
+                density="compact"
+                color="primary"
+                @update:model-value="(v) => toggleChannel(ch.value, !!v)"
+              />
+            </div>
+          </v-card>
+
           <v-divider class="my-4" />
           <div class="d-flex align-start">
             <v-switch
@@ -544,7 +605,7 @@
 <script setup lang="ts">
 import { computed, onMounted, reactive, ref, watch } from 'vue';
 import { Interfaces, type InterfaceItem } from '@/api/client';
-import { cronToLabel, formatDateTime } from '@/utils/format';
+import { cronToLabel, formatDateTime, formatDateTimeShort } from '@/utils/format';
 import { useAuthStore } from '@/stores/auth';
 
 const auth = useAuthStore();
@@ -608,8 +669,8 @@ const headers = [
   { title: '프로토콜', key: 'protocol' },
   { title: '엔드포인트', key: 'endpoint' },
   { title: '스케줄', key: 'schedule_cron' },
-  { title: '상태', key: 'enabled', width: 110 },
-  { title: '', key: 'actions', sortable: false, align: 'end' as const, width: 160 },
+  { title: '상태', key: 'enabled', width: 160 },
+  { title: '', key: 'actions', sortable: false, align: 'end' as const, width: 220 },
 ];
 
 const rows = ref<InterfaceItem[]>([]);
@@ -618,6 +679,68 @@ const saving = ref(false);
 const running = ref<number | null>(null);
 const dialog = ref(false);
 const snack = reactive({ show: false, text: '', color: 'success' });
+
+// Phase B.7 — 알림 음소거 / 채널 ----------------------------------------------
+const muteOptions = [
+  { minutes: 10, label: '10분' },
+  { minutes: 30, label: '30분' },
+  { minutes: 60, label: '1시간' },
+  { minutes: 240, label: '4시간' },
+  { minutes: 1440, label: '24시간' },
+];
+const alertChannelOptions: { value: 'in_app' | 'slack' | 'email'; label: string }[] = [
+  { value: 'in_app', label: '🔔 화면 알림 (toast)' },
+  { value: 'slack', label: '💬 Slack' },
+  { value: 'email', label: '✉️ Email' },
+];
+
+function isMuted(item: InterfaceItem): boolean {
+  if (!item.muted_until) return false;
+  return new Date(item.muted_until).getTime() > Date.now();
+}
+
+function muteRemaining(item: InterfaceItem): string {
+  if (!item.muted_until) return '';
+  const ms = new Date(item.muted_until).getTime() - Date.now();
+  if (ms <= 0) return '';
+  const totalMin = Math.ceil(ms / 60000);
+  if (totalMin < 60) return `${totalMin}분 남음`;
+  const h = Math.floor(totalMin / 60);
+  const m = totalMin % 60;
+  return m > 0 ? `${h}시간 ${m}분` : `${h}시간`;
+}
+
+const formChannels = computed<('in_app' | 'slack' | 'email')[]>({
+  get: () => (form.alert_channels ?? ['in_app', 'slack', 'email']) as any,
+  set: (v) => { form.alert_channels = v; },
+});
+
+function toggleChannel(value: 'in_app' | 'slack' | 'email', on: boolean) {
+  const cur = new Set<'in_app' | 'slack' | 'email'>(formChannels.value);
+  if (on) cur.add(value);
+  else cur.delete(value);
+  formChannels.value = Array.from(cur);
+}
+
+async function mute(item: InterfaceItem, minutes: number) {
+  try {
+    await Interfaces.mute(item.id, minutes);
+    notify(`${item.name} 음소거 — ${minutes < 60 ? minutes + '분' : (minutes / 60) + '시간'}`);
+    await load();
+  } catch (e: any) {
+    notify(e?.response?.data?.detail ?? '음소거 실패', 'error');
+  }
+}
+
+async function unmute(item: InterfaceItem) {
+  try {
+    await Interfaces.unmute(item.id);
+    notify(`${item.name} 음소거 해제`);
+    await load();
+  } catch (e: any) {
+    notify(e?.response?.data?.detail ?? '해제 실패', 'error');
+  }
+}
 
 const form = reactive<Partial<InterfaceItem> & { auth_secret?: string; secret_change_reason?: string }>({
   protocol: 'REST',

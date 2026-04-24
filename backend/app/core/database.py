@@ -73,6 +73,9 @@ _DEMO_MIGRATIONS: list[str] = [
     "ALTER TABLE users ADD COLUMN IF NOT EXISTS must_change_password BOOLEAN NOT NULL DEFAULT FALSE",
     # Phase B.6 세션 버전 (강제 로그아웃 — JWT payload.sv 와 비교)
     "ALTER TABLE users ADD COLUMN IF NOT EXISTS session_version INTEGER NOT NULL DEFAULT 1",
+    # Phase B.7 알림 룰 (인터페이스별 음소거 + 채널 화이트리스트)
+    "ALTER TABLE interfaces ADD COLUMN IF NOT EXISTS muted_until TIMESTAMPTZ",
+    "ALTER TABLE interfaces ADD COLUMN IF NOT EXISTS alert_channels JSON DEFAULT '[\"in_app\",\"slack\",\"email\"]'",
 ]
 
 

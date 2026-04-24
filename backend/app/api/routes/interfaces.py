@@ -240,6 +240,65 @@ def delete_interface(
     return Response(status_code=status.HTTP_204_NO_CONTENT)
 
 
+@router.post("/{interface_id}/mute", response_model=InterfaceOut)
+def mute_interface(
+    interface_id: int,
+    minutes: int,
+    request: Request,
+    db: Session = Depends(get_db),
+    actor: User = Depends(require_role([UserRole.OPERATOR, UserRole.ADMIN])),
+) -> InterfaceOut:
+    """알림 음소거 — Phase B.7. 정기 점검 등 의도적 알림 폭주 방지용.
+
+    - minutes 분 후 자동 해제 (muted_until = now + minutes)
+    - incident 자체는 정상 생성, 대시보드 카운트도 갱신. toast/slack/email 만 skip.
+    - OPERATOR/ADMIN 가능. 음소거 시작/해제는 모두 감사 로그.
+    """
+    from datetime import timedelta
+
+    if minutes < 1 or minutes > 24 * 60:
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, "음소거 시간은 1분~24시간 사이여야 합니다.")
+    obj = db.get(Interface, interface_id)
+    if not obj:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "interface not found")
+    until = now_kst() + timedelta(minutes=minutes)
+    obj.muted_until = until
+    db.commit()
+    db.refresh(obj)
+    record_audit(
+        db, actor=actor, action="interface.mute",
+        resource_type="interface", resource_id=obj.id,
+        after={"name": obj.name, "minutes": minutes, "until": until.isoformat()},
+        request=request,
+    )
+    return _to_out(obj)
+
+
+@router.post("/{interface_id}/unmute", response_model=InterfaceOut)
+def unmute_interface(
+    interface_id: int,
+    request: Request,
+    db: Session = Depends(get_db),
+    actor: User = Depends(require_role([UserRole.OPERATOR, UserRole.ADMIN])),
+) -> InterfaceOut:
+    """음소거 즉시 해제 (Phase B.7). 멱등 — 음소거 안 된 상태에서 호출해도 OK."""
+    obj = db.get(Interface, interface_id)
+    if not obj:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "interface not found")
+    was_muted = obj.muted_until is not None
+    obj.muted_until = None
+    db.commit()
+    db.refresh(obj)
+    if was_muted:
+        record_audit(
+            db, actor=actor, action="interface.unmute",
+            resource_type="interface", resource_id=obj.id,
+            after={"name": obj.name},
+            request=request,
+        )
+    return _to_out(obj)
+
+
 @router.post("/{interface_id}/restore", response_model=InterfaceOut)
 def restore_interface(
     interface_id: int,

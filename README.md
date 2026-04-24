@@ -13,7 +13,7 @@
 |---|---|---|
 | F1 | 인터페이스 등록·실행 (REST / SOAP / MQ / Batch / SFTP, Cron, AES-GCM 시크릿) | ✅ |
 | F2 | 실시간 모니터링 (WebSocket 라이브 + ApexCharts 시계열·히트맵) | ✅ |
-| F3 | 장애 자동 감지·분류 (Timeout/Auth/Format/5xx) + Slack·Email 알림 | ✅ |
+| F3 | 장애 자동 감지·분류 (Timeout/Auth/Format/5xx) + Slack·Email + in-app toast/뱃지 + **인터페이스별 음소거·채널 토글** | ✅ |
 | F4 | 로그 검색 + 재처리 (단건 ↻ / 일괄 / lineage 체인) + 상세 다이얼로그 | ✅ |
 | F5 | 성능 관리 (p50/p95/p99 백분위, TPS, Slow Top 10) | ✅ |
 | F6 | SLA 리포트 (가동률 / 응답시간 vs 목표) | ✅ |
