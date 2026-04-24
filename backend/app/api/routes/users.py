@@ -176,6 +176,33 @@ def enable_user(
     return UserOut.model_validate(obj)
 
 
+@router.post("/{user_id}/force-logout", response_model=UserOut)
+def force_logout_user(
+    user_id: int,
+    request: Request,
+    db: Session = Depends(get_db),
+    actor: User = Depends(require_role([UserRole.ADMIN])),
+) -> UserOut:
+    """대상 사용자의 모든 활성 세션 즉시 종료 (Phase B.6).
+
+    session_version 을 +1 → 발급된 모든 JWT 가 sv mismatch 로 다음 요청부터
+    401. 토큰 탈취 의심 / 퇴사 / 권한 회수 등 즉시 격리가 필요한 시나리오에 사용.
+    """
+    obj = db.get(User, user_id)
+    if not obj:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "user not found")
+    obj.session_version = (obj.session_version or 1) + 1
+    db.commit()
+    db.refresh(obj)
+    record_audit(
+        db, actor=actor, action="user.force_logout",
+        resource_type="user", resource_id=obj.id,
+        after={"username": obj.username, "self_target": obj.id == actor.id},
+        request=request,
+    )
+    return UserOut.model_validate(obj)
+
+
 @router.post("/{user_id}/unlock", response_model=UserOut)
 def unlock_user(
     user_id: int,
@@ -225,6 +252,8 @@ def reset_password(
     obj.must_change_password = True
     obj.failed_login_count = 0
     obj.locked_until = None
+    # 비밀번호가 바뀌었으니 기존 세션 모두 종료 (탈취 의심 시 reset 시나리오)
+    obj.session_version = (obj.session_version or 1) + 1
     db.commit()
     db.refresh(obj)
     record_audit(

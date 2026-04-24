@@ -71,6 +71,8 @@ _DEMO_MIGRATIONS: list[str] = [
     "ALTER TABLE users ADD COLUMN IF NOT EXISTS locked_until TIMESTAMPTZ",
     # Phase B.4 강제 비밀번호 변경 플래그
     "ALTER TABLE users ADD COLUMN IF NOT EXISTS must_change_password BOOLEAN NOT NULL DEFAULT FALSE",
+    # Phase B.6 세션 버전 (강제 로그아웃 — JWT payload.sv 와 비교)
+    "ALTER TABLE users ADD COLUMN IF NOT EXISTS session_version INTEGER NOT NULL DEFAULT 1",
 ]
 
 

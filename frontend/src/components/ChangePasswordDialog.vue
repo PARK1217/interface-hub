@@ -191,8 +191,11 @@ async function onSubmit() {
   busy.value = true;
   serverError.value = '';
   try {
+    // Phase B.6 — 응답에 새 access_token 포함. 기존 토큰은 서버에서 무효화되므로
+    // 즉시 교체. setToken 을 setUser 보다 먼저 호출해야 다음 axios 호출이 새 토큰 사용.
     const res = await Auth.changePassword(currentPw.value, newPw.value);
-    auth.setUser(res.data);
+    auth.setToken(res.data.access_token, res.data.expires_at);
+    auth.setUser(res.data.user);
     emit('changed');
     emit('update:modelValue', false);
   } catch (e: any) {

@@ -42,10 +42,14 @@ def verify_password(plain: str, hashed: str) -> bool:
         return False
 
 
-def create_access_token(*, user_id: int, username: str, role: str) -> tuple[str, datetime]:
+def create_access_token(
+    *, user_id: int, username: str, role: str, session_version: int
+) -> tuple[str, datetime]:
     """JWT 발급. 반환: (token, expires_at).
 
-    payload: {sub, username, role, iat, exp}
+    payload: {sub, username, role, sv, iat, exp}
+    sv (session_version) 는 강제 로그아웃 / 비밀번호 변경 시 사용자별 카운터를
+    +1 시켜 기존 토큰을 일괄 무효화하기 위한 키.
     """
     s = get_settings()
     now = datetime.now(KST)
@@ -54,6 +58,7 @@ def create_access_token(*, user_id: int, username: str, role: str) -> tuple[str,
         "sub": str(user_id),
         "username": username,
         "role": role,
+        "sv": session_version,
         "iat": int(now.timestamp()),
         "exp": int(exp.timestamp()),
     }

@@ -16,6 +16,7 @@ from app.schemas.user import (
     LoginRequest,
     LoginResponse,
     PasswordChangeRequest,
+    PasswordChangeResponse,
     UserOut,
 )
 from app.services.audit import record_audit
@@ -119,7 +120,10 @@ def login(
     db.commit()
     db.refresh(user)
 
-    token, exp = create_access_token(user_id=user.id, username=user.username, role=user.role.value)
+    token, exp = create_access_token(
+        user_id=user.id, username=user.username, role=user.role.value,
+        session_version=user.session_version,
+    )
     record_audit(db, actor=user, action="auth.login", request=request)
     return LoginResponse(access_token=token, expires_at=exp, user=UserOut.model_validate(user))
 
@@ -130,10 +134,13 @@ def logout(
     db: Session = Depends(get_db),
     current: User = Depends(get_current_user),
 ) -> dict[str, str]:
-    """로그아웃 — JWT 는 stateless 라 서버 측 무효화 없음. 감사 로그만 기록.
+    """로그아웃 — Phase B.6 부터 서버 측에서도 토큰 무효화.
 
-    실제 로그아웃은 클라이언트가 토큰 삭제. 토큰 블랙리스트는 추후 보강 영역.
+    session_version 을 +1 → 발급된 모든 JWT 의 sv 가 mismatch 되어 다음 요청부터
+    401. 다른 탭/디바이스의 세션도 함께 종료.
     """
+    current.session_version = (current.session_version or 1) + 1
+    db.commit()
     record_audit(db, actor=current, action="auth.logout", request=request)
     return {"detail": "logged out"}
 
@@ -143,13 +150,13 @@ def me(current: User = Depends(get_current_user)) -> UserOut:
     return UserOut.model_validate(current)
 
 
-@router.post("/change-password", response_model=UserOut)
+@router.post("/change-password", response_model=PasswordChangeResponse)
 def change_password(
     payload: PasswordChangeRequest,
     request: Request,
     db: Session = Depends(get_db),
     current: User = Depends(get_current_user),
-) -> UserOut:
+) -> PasswordChangeResponse:
     """본인 비밀번호 변경 (Phase B.3).
 
     - 현재 비밀번호 확인 후 진행
@@ -176,6 +183,10 @@ def change_password(
 
     current.password_hash = hash_password(payload.new_password)
     current.must_change_password = False
+    # Phase B.6 — 비밀번호 변경 시 기존 세션 모두 무효화 (보안 best-practice).
+    # session_version +1 → 옛 토큰들은 sv mismatch 로 401. 새 토큰은 갱신된
+    # session_version 으로 발급되어 정상 동작.
+    current.session_version = (current.session_version or 1) + 1
     db.commit()
     db.refresh(current)
     record_audit(
@@ -184,4 +195,10 @@ def change_password(
         after={"username": current.username},
         request=request,
     )
-    return UserOut.model_validate(current)
+    token, exp = create_access_token(
+        user_id=current.id, username=current.username, role=current.role.value,
+        session_version=current.session_version,
+    )
+    return PasswordChangeResponse(
+        user=UserOut.model_validate(current), access_token=token, expires_at=exp
+    )

@@ -279,6 +279,7 @@ export const Users = {
   disable: (id: number) => api.post<UserItem>(`/users/${id}/disable`),
   enable: (id: number) => api.post<UserItem>(`/users/${id}/enable`),
   unlock: (id: number) => api.post<UserItem>(`/users/${id}/unlock`),
+  forceLogout: (id: number) => api.post<UserItem>(`/users/${id}/force-logout`),
   resetPassword: (id: number) =>
     api.post<{ user_id: number; username: string; temp_password: string }>(`/users/${id}/reset-password`),
 };

@@ -49,4 +49,14 @@ class User(Base):
     # change-password 완료 시 False.
     must_change_password: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
 
+    # --- Phase B.6 세션 버전 (강제 로그아웃 / 토큰 무효화) ----------------
+    # 모든 JWT 페이로드에 "sv": session_version 을 박아 발급. 토큰 검증 시
+    # payload.sv != user.session_version 이면 무효. 본인 로그아웃 / ADMIN 강제
+    # 로그아웃 / 비밀번호 변경 시 +1 → 기존 활성 세션 일괄 종료 (다른 탭 포함).
+    #
+    # 시각 비교 (tokens_invalid_before) 대신 카운터를 쓰는 이유: JWT iat 는 초
+    # 단위라 같은 초에 발급된 두 토큰을 시각 비교로는 구분 못 함 (race).
+    # 카운터는 정수 동등 비교라 race 없음 + 블랙리스트 테이블/cleanup cron 불필요.
+    session_version: Mapped[int] = mapped_column(Integer, default=1, nullable=False)
+
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())

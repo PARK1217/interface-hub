@@ -22,11 +22,14 @@ import time
 
 import requests
 
+import time as _time
+
 BASE = "http://127.0.0.1:8000/api"
 ADMIN_USER = "admin"
 ADMIN_PW = "admin1234"
 
-TEST_USER = "qa_b14"
+# 매 실행마다 새 사용자명 — 시나리오 멱등성 확보 (직전 실행 잔존 무관)
+TEST_USER = f"qa_b14_{int(_time.time())}"
 TEST_PW = "First1!Pwd"   # 정책 만족 (영문+숫자+특수문자, 10자)
 
 
@@ -204,16 +207,21 @@ def main() -> int:
     # 7-d) 성공
     new_pw = "Second2@Pwd"
 
+    new_user_token2: dict = {}
+
     def change_password_success():
         r = _post(
             "/auth/change-password", token=user_token,
             json={"current_password": TEST_PW, "new_password": new_pw},
             expect=200,
         ).json()
-        assert r["must_change_password"] is False, "변경 후 must_change_password=False"
-    step("B.3 정상 비밀번호 변경 — must_change_password=False", change_password_success)
+        # B.6: 응답에 새 토큰 포함
+        assert "access_token" in r, "응답에 access_token 누락 (B.6)"
+        assert r["user"]["must_change_password"] is False
+        new_user_token2["t"] = r["access_token"]
+    step("B.3 정상 비밀번호 변경 — must_change_password=False + B.6 새 토큰", change_password_success)
 
-    # 7-e) 새 비번으로 재로그인 — must_change_password=False
+    # 7-e) 새 비번으로 재로그인 (또 한 번 — fresh login 도 동작)
     def relogin_with_new_pw():
         body = login(TEST_USER, new_pw)
         assert body["user"]["must_change_password"] is False

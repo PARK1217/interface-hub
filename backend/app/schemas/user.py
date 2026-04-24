@@ -63,3 +63,15 @@ class PasswordChangeRequest(BaseModel):
 
     current_password: str = Field(..., min_length=1)
     new_password: str = Field(..., min_length=1)
+
+
+class PasswordChangeResponse(BaseModel):
+    """비밀번호 변경 후 새로 발급된 토큰을 함께 반환.
+
+    Phase B.6 — 비밀번호 변경 시 기존 세션 모두 무효화하므로 본 요청의
+    토큰도 함께 무효가 됨. 프론트가 즉시 새 토큰으로 교체하도록 같이 응답.
+    """
+
+    user: UserOut
+    access_token: str
+    expires_at: datetime

@@ -16,6 +16,8 @@
       자기 자신의 권한 변경 / 자기 계정 비활성화는 lockout 방지를 위해 차단됩니다.
       비밀번호 정책: <strong>8자 이상 + 영문·숫자·특수문자 모두 포함</strong> ·
       연속 5회 실패 시 30분 잠금 (관리자가 🔓 버튼으로 즉시 해제 가능).
+      🚪 강제 로그아웃은 토큰 탈취 의심·퇴사·권한 회수 시 모든 활성 세션을
+      즉시 종료합니다 (다른 탭/디바이스 포함).
     </v-alert>
 
     <v-card>
@@ -93,6 +95,15 @@
             color="error"
             title="잠금 해제 (실패 카운터 리셋)"
             @click="unlock(item)"
+          />
+          <v-btn
+            icon="mdi-exit-run"
+            size="x-small"
+            variant="text"
+            color="warning"
+            :disabled="item.id === auth.user?.id"
+            :title="item.id === auth.user?.id ? '본인 계정은 헤더 메뉴에서 로그아웃' : '강제 로그아웃 (모든 활성 세션 즉시 종료)'"
+            @click="forceLogout(item)"
           />
           <v-btn
             icon="mdi-key-variant"
@@ -237,7 +248,7 @@ const headers = [
   { title: '역할', key: 'role', width: 110 },
   { title: '상태', key: 'status', width: 100 },
   { title: '마지막 로그인', key: 'last_login_at', width: 170 },
-  { title: '', key: 'actions', sortable: false, align: 'end' as const, width: 200 },
+  { title: '', key: 'actions', sortable: false, align: 'end' as const, width: 240 },
 ];
 
 const rows = ref<UserItem[]>([]);
@@ -348,6 +359,17 @@ function lockedTitle(item: UserItem): string {
   if (ms <= 0) return '';
   const min = Math.ceil(ms / 60000);
   return `약 ${min}분 후 자동 해제 (또는 🔓 클릭으로 즉시 해제)`;
+}
+
+async function forceLogout(item: UserItem) {
+  if (!confirm(`'${item.username}' 의 모든 활성 세션을 즉시 종료할까요?\n\n해당 사용자의 모든 탭/디바이스에서 다음 요청부터 401 → 자동 로그아웃됩니다.`)) return;
+  try {
+    await Users.forceLogout(item.id);
+    notify(`${item.username} 강제 로그아웃됨`);
+    await load();
+  } catch (e: any) {
+    notify(e?.response?.data?.detail ?? '강제 로그아웃 실패', 'error');
+  }
 }
 
 async function unlock(item: UserItem) {

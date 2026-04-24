@@ -80,5 +80,14 @@ export const useAuthStore = defineStore('auth', {
       this.user = u;
       localStorage.setItem('noahub_user', JSON.stringify(u));
     },
+
+    // Phase B.6 — 비밀번호 변경 응답에 포함된 새 토큰으로 교체. 기존 토큰은
+    // 서버에서 tokens_invalid_before 갱신으로 무효화됨 → 새 토큰만 살아있음.
+    setToken(token: string, expiresAt: string) {
+      this.token = token;
+      this.expiresAt = expiresAt;
+      localStorage.setItem('noahub_token', token);
+      localStorage.setItem('noahub_expires', expiresAt);
+    },
   },
 });
