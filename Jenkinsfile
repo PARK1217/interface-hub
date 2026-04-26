@@ -42,7 +42,6 @@ pipeline {
                     rsync -rlpD --delete --no-times \
                         --exclude='.git' \
                         --exclude='backend/.env' \
-                        --exclude='frontend/vite.config.ts' \
                         --exclude='node_modules' \
                         --exclude='__pycache__' \
                         --exclude='*.pyc' \
