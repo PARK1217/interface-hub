@@ -20,6 +20,7 @@ export default defineConfig({
     host: '0.0.0.0',
     port: 5173,
     allowedHosts: ['interface-hub.chobihome.site', 'localhost', '.chobihome.site'],
+    allowedHosts: ['interface-hub.chobihome.site', 'localhost', '.chobihome.site'],
     proxy: {
       '/api': { target: apiTarget, changeOrigin: true },
       '/ws': { target: wsTarget, ws: true, changeOrigin: true },
