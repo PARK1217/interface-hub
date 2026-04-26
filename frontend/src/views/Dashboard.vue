@@ -15,7 +15,7 @@
     <v-row class="mt-2">
       <v-col cols="12" md="8">
         <v-card>
-          <v-card-title class="text-subtitle-1">호출량 / 응답시간 (최근 6시간)</v-card-title>
+          <v-card-title class="text-subtitle-1">호출량 / 응답시간</v-card-title>
           <v-card-text>
             <apexchart type="line" height="320" :options="chartOpts" :series="chartSeries" />
           </v-card-text>
