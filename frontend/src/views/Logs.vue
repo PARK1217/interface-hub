@@ -147,33 +147,37 @@
           </v-chip>
         </template>
         <template #item.actions="{ item }">
-          <v-btn
-            icon="mdi-eye-outline"
-            size="x-small"
-            variant="text"
-            color="primary"
-            title="상세 보기"
-            @click="openDetail(item)"
-          />
-          <v-btn
-            v-if="canRetry(item) && auth.canMutate"
-            icon="mdi-restart"
-            size="x-small"
-            variant="text"
-            :loading="retrying === item.id"
-            color="warning"
-            title="재실행"
-            @click="retryOne(item)"
-          />
-          <v-btn
-            v-if="item.parent_log_id || item.is_reprocessed"
-            icon="mdi-source-branch"
-            size="x-small"
-            variant="text"
-            color="info"
-            title="재처리 체인 보기"
-            @click="openChain(item.id)"
-          />
+          <div class="d-flex justify-end" style="gap: 4px; min-width: 96px;">
+            <v-btn
+              icon="mdi-eye-outline"
+              size="x-small"
+              variant="text"
+              color="primary"
+              title="상세 보기"
+              @click="openDetail(item)"
+            />
+            <v-btn
+              v-if="canRetry(item) && auth.canMutate"
+              icon="mdi-restart"
+              size="x-small"
+              variant="text"
+              :loading="retrying === item.id"
+              color="warning"
+              title="재실행"
+              @click="retryOne(item)"
+            />
+            <div v-else style="width: 28px;" />
+            <v-btn
+              v-if="item.parent_log_id || item.is_reprocessed"
+              icon="mdi-source-branch"
+              size="x-small"
+              variant="text"
+              color="info"
+              title="재처리 체인 보기"
+              @click="openChain(item.id)"
+            />
+            <div v-else style="width: 28px;" />
+          </div>
         </template>
       </v-data-table>
     </v-card>
