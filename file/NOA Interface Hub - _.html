@@ -223,7 +223,8 @@
         <li><a href="#s7">성능 · 한계</a></li>
         <li><a href="#s8">트러블슈팅 FAQ</a></li>
         <li><a href="#s9">운영 도입 시 보강</a></li>
-        <li><a href="#s10">작성 정보</a></li>
+        <li><a href="#s10">CI/CD · 자동 배포</a></li>
+        <li><a href="#s11">작성 정보</a></li>
       </ol>
     </nav>
   </aside>
@@ -632,9 +633,86 @@ docker compose exec backend python -m app.scripts.seed_demo
       </table></div>
     </section>
 
-    <!-- ===== 10. AUTHOR ===== -->
+    <!-- ===== 10. CI/CD ===== -->
     <section id="s10">
-      <div class="sec-head"><span class="sec-num">10</span><h2>작성 정보</h2></div>
+      <div class="sec-head"><span class="sec-num">10</span><h2>CI/CD · 자동 배포</h2></div>
+
+      <p style="font-size:13.5px;color:var(--ink-3)">로컬 <code>git push</code> 한 번으로 운영 환경에 자동 반영. 배포 검증·롤백 가능 구조.</p>
+
+      <h4>파이프라인 흐름</h4>
+<pre data-lang="text"><span class="c"># 코드 푸시부터 배포 완료까지 평균 2~3분</span>
+
+[로컬 PC] git push origin main
+   ↓
+[GitHub] Webhook 발사 → https://jenkins.chobihome.site/github-webhook/
+   ↓
+[Jenkins Pipeline] 5단계 자동 실행
+   ① Checkout      — GitHub에서 최신 코드 fetch
+   ② Verify .env   — 운영 환경변수 존재 여부 점검
+   ③ Sync Source   — rsync 로 운영 디렉토리 동기화 (.env, vite 설정 보존)
+   ④ Build &amp; Deploy — docker compose build + up -d
+   ⑤ Health Check  — Backend(/docs) · Frontend(/) HTTP 200 확인 (최대 6회 재시도)
+   ↓
+[배포 완료] https://interface-hub.chobihome.site</pre>
+
+      <h4>인프라 구성</h4>
+      <div class="table-wrap"><table>
+        <thead><tr><th>계층</th><th>구성</th><th>역할</th></tr></thead>
+        <tbody>
+          <tr><td>호스트</td><td>Proxmox VM · Ubuntu 24.04 LTS</td><td>사내망 환경 시뮬레이션 (KVM 가상화)</td></tr>
+          <tr><td>오케스트레이션</td><td>Docker Compose</td><td>PostgreSQL 15 · Redis 7 · SFTP · Backend · Frontend (5개 컨테이너)</td></tr>
+          <tr><td>리버스 프록시</td><td>Nginx</td><td><code>/</code> · <code>/api</code> · <code>/ws</code> · <code>/docs</code> 경로별 라우팅 + WebSocket 프록시</td></tr>
+          <tr><td>외부 노출</td><td>Cloudflare Tunnel</td><td>HTTPS 자동 · 포트 노출 없는 outbound-only 보안 구조</td></tr>
+          <tr><td>CI/CD</td><td>Jenkins 2.555 + GitHub Webhook</td><td>git push → 자동 빌드 · 배포 (declarative pipeline)</td></tr>
+          <tr><td>도메인</td><td>Cloudflare DNS</td><td>interface-hub.chobihome.site / jenkins.chobihome.site</td></tr>
+        </tbody>
+      </table></div>
+
+      <h4>설계 의도</h4>
+      <div class="table-wrap"><table>
+        <thead><tr><th>선택</th><th>왜</th></tr></thead>
+        <tbody>
+          <tr><td><strong>Jenkins</strong> (vs GitHub Actions)</td><td>금융권 SI 환경은 폐쇄망 · 자체 호스팅 CI/CD 가 표준. 사내 인프라에 직접 빌드 노드를 두는 운영 패턴을 시뮬레이션.</td></tr>
+          <tr><td><strong>Cloudflare Tunnel</strong> (vs 포트 포워딩)</td><td>NAT/방화벽 변경 없이 outbound-only 연결로 외부 노출. 공유기 설정 불필요 + 자동 HTTPS + DDoS 보호.</td></tr>
+          <tr><td><strong>rsync 동기화</strong> (vs 컨테이너 안에서 git pull)</td><td>운영 디렉토리의 <code>.env</code>(시크릿) · <code>vite.config.ts</code>(<code>allowedHosts</code> 운영 도메인) 보존. 빌드 결과물 격리.</td></tr>
+          <tr><td><strong>Health Check 단계 분리</strong></td><td>컨테이너 기동 후 실제 HTTP 응답 검증. 실패 시 빌드 FAILURE 로 즉시 알람 가능.</td></tr>
+          <tr><td><strong>백엔드/프론트엔드만 재기동</strong></td><td>PostgreSQL · Redis · SFTP 는 <code>docker compose up -d backend frontend</code> 로 보존. 배포 시 데이터 손실 없음.</td></tr>
+        </tbody>
+      </table></div>
+
+      <h4>Jenkinsfile 핵심</h4>
+<pre data-lang="groovy">pipeline {
+    agent any
+    options {
+        timeout(time: 30, unit: 'MINUTES')
+        buildDiscarder(logRotator(numToKeepStr: '20', daysToKeepStr: '30'))
+        disableConcurrentBuilds()
+    }
+    environment {
+        PROJECT_DIR = "/home/park/interface-hub"
+        APP_URL = "https://interface-hub.chobihome.site"
+    }
+    stages {
+        stage('Checkout')          { steps { checkout scm } }
+        stage('Verify .env')       { /* .env 존재 확인 */ }
+        stage('Sync Source')       { /* rsync --no-times --exclude='.env' */ }
+        stage('Docker Build &amp; Deploy') { /* docker compose build &amp;&amp; up -d */ }
+        stage('Health Check')      { /* curl /docs &amp; / 응답 검증 */ }
+    }
+    post {
+        success { echo "🎉 배포 성공! ${APP_URL}" }
+        failure { echo "❌ 배포 실패. Console Output 확인." }
+    }
+}</pre>
+
+      <p style="font-size:13.5px;color:var(--ink-3);margin-top:12px">
+        <strong style="color:var(--ink)">운영 도입 시</strong>: Jenkins 노드 분리 (master/agent) · Slack/Email 빌드 알림 · 스테이징 환경 · Blue-Green 배포 전략 적용.
+      </p>
+    </section>
+
+    <!-- ===== 11. AUTHOR ===== -->
+    <section id="s11">
+      <div class="sec-head"><span class="sec-num">11</span><h2>작성 정보</h2></div>
 
       <div class="table-wrap"><table>
         <tbody>
