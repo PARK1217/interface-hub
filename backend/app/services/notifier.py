@@ -99,7 +99,7 @@ def evaluate_global_rule(severity: str) -> GlobalRuleDecision:
 
 def _format_message(itf: Interface, incident: Incident) -> str:
     return (
-        f"[NOA Hub] {incident.severity.upper()} — {itf.name}\n"
+        f"[Interface Hub] {incident.severity.upper()} — {itf.name}\n"
         f"  · type     : {incident.type.value}\n"
         f"  · summary  : {incident.summary}\n"
         f"  · detected : {incident.detected_at.isoformat() if incident.detected_at else '-'}"
@@ -196,7 +196,7 @@ async def dispatch_alert(itf: Interface, incident: Incident) -> None:
         )
 
     if should_send_email:
-        await _send_email(f"[NOA Hub] {itf.name} — {incident.type.value}", text)
+        await _send_email(f"[Interface Hub] {itf.name} — {incident.type.value}", text)
     else:
         log.info(
             "email skipped — muted=%s quiet=%s itf=%s global=%s",

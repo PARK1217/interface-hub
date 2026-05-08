@@ -39,7 +39,7 @@
 
     <!-- Print-only header -->
     <div class="print-only mb-3">
-      <h2>NOA Interface Hub — SLA 리포트</h2>
+      <h2>Interface Hub — SLA 리포트</h2>
       <div class="text-caption">
         기간: 최근 {{ days }}일 · 생성: {{ printedAt }}
       </div>

@@ -8,7 +8,7 @@
         <template #prepend>
           <v-icon icon="mdi-hub" size="32" />
         </template>
-        <v-list-item-title class="text-h6">NOA Hub</v-list-item-title>
+        <v-list-item-title class="text-h6">Interface Hub</v-list-item-title>
         <v-list-item-subtitle>Interface Control</v-list-item-subtitle>
       </v-list-item>
       <v-divider />
@@ -245,7 +245,7 @@ const visibleRoutes = computed(() =>
   }),
 );
 
-const currentTitle = computed(() => (route.meta?.title as string) ?? 'NOA Interface Hub');
+const currentTitle = computed(() => (route.meta?.title as string) ?? 'Interface Hub');
 
 const roleColor = computed(() => {
   switch (auth.user?.role) {

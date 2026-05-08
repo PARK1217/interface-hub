@@ -45,7 +45,7 @@ async def lifespan(app: FastAPI):  # noqa: ARG001
 
 
 app = FastAPI(
-    title="NOA Interface Hub",
+    title="Interface Hub",
     description="보험사 외부 인터페이스 통합 관제 플랫폼",
     version="0.1.0",
     lifespan=lifespan,

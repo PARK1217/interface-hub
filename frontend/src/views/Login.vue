@@ -6,7 +6,7 @@
           <v-card-title class="d-flex align-center pa-4">
             <v-icon icon="mdi-hub" size="36" color="primary" class="mr-3" />
             <div>
-              <div class="text-h5">NOA Interface Hub</div>
+              <div class="text-h5">Interface Hub</div>
               <div class="text-caption text-medium-emphasis">보험사 인터페이스 통합 관제</div>
             </div>
           </v-card-title>
@@ -170,8 +170,8 @@ const reason = computed(() => route.query.reason as string | undefined);
 
 // 문서 링크 — 백엔드 정적 서빙 (/api/docs-file/...). 파일명 공백·특수문자는 encodeURI 로 처리.
 // file/ 폴더 안에서 실제 파일명이 바뀌면 아래 상수만 교체.
-const proposalHref = `/api/docs-file/${encodeURIComponent('NOA_Interface_Hub_기획서.pdf')}`;
-const developmentHref = `/api/docs-file/${encodeURIComponent('NOA Interface Hub - _.html')}`;
+const proposalHref = `/api/docs-file/${encodeURIComponent('Interface_Hub_기획서.pdf')}`;
+const developmentHref = `/api/docs-file/${encodeURIComponent('Interface Hub - _.html')}`;
 
 // 입력란 placeholder — 평가관에게 아래 데모 카드 클릭 안내
 const hintUsername = '아래 데모 계정 카드를 클릭하세요 ↓';
