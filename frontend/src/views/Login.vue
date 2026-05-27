@@ -170,8 +170,11 @@ const reason = computed(() => route.query.reason as string | undefined);
 
 // 문서 링크 — 백엔드 정적 서빙 (/api/docs-file/...). 파일명 공백·특수문자는 encodeURI 로 처리.
 // file/ 폴더 안에서 실제 파일명이 바뀌면 아래 상수만 교체.
-const proposalHref = `/api/docs-file/${encodeURIComponent('Interface_Hub_기획서.pdf')}`;
-const developmentHref = `/api/docs-file/${encodeURIComponent('Interface Hub - _.html')}`;
+// ?v=__BUILD_TS__ : 빌드 시점 타임스탬프를 쿼리로 붙여 PDF/HTML 캐시를 무효화.
+//   Chrome PDF 뷰어가 같은 URL 의 PDF 를 매우 공격적으로 캐시해서 새 기획서가
+//   안 보이는 문제가 있었음. 배포마다 URL 이 바뀌면 무조건 새로 받음.
+const proposalHref = `/api/docs-file/${encodeURIComponent('Interface_Hub_기획서.pdf')}?v=${__BUILD_TS__}`;
+const developmentHref = `/api/docs-file/${encodeURIComponent('Interface Hub - _.html')}?v=${__BUILD_TS__}`;
 
 // 입력란 placeholder — 평가관에게 아래 데모 카드 클릭 안내
 const hintUsername = '아래 데모 계정 카드를 클릭하세요 ↓';
