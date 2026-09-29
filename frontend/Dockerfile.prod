@@ -1,0 +1,16 @@
+# 운영(OCI) 배포용 — vite build 결과물(dist)을 nginx 로 정적 서빙.
+# 개발용 Dockerfile(Vite dev 서버)은 모듈을 파일 단위로 내려줘서 첫 로딩이 느리고
+# 소스가 그대로 노출됨. 포트는 기존 구성과 같게 5173 유지 (호스트 nginx 가 /api·/ws 프록시).
+FROM node:20-alpine AS build
+WORKDIR /app
+# lock 파일은 Windows 에서 생성돼 ARM(musl)용 rollup 네이티브 모듈이 빠져 있음 → install 사용
+COPY package.json ./
+RUN npm install
+COPY . .
+RUN npm run build
+
+FROM nginx:1.27-alpine
+COPY nginx.conf /etc/nginx/conf.d/default.conf
+COPY --from=build /app/dist /usr/share/nginx/html
+EXPOSE 5173
+CMD ["nginx", "-g", "daemon off;"]

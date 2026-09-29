@@ -17,6 +17,15 @@ from app.models.incident import IncidentType
 from app.services.notifier import dispatch_alert
 
 log = logging.getLogger("noahub.detector")
+
+# incident 요약 문구 (운영 화면 노출용)
+_TYPE_LABEL: dict[IncidentType, str] = {
+    IncidentType.TIMEOUT: "응답 타임아웃",
+    IncidentType.AUTH_ERROR: "인증 오류",
+    IncidentType.FORMAT_ERROR: "요청 형식 오류",
+    IncidentType.SERVER_ERROR: "상대 서버 오류",
+    IncidentType.UNKNOWN: "호출 실패",
+}
 ROLLING_WINDOW_MIN = 15  # rolling failure-rate window
 
 
@@ -83,7 +92,10 @@ def evaluate_after_call(db: Session, itf: Interface, call: CallLog) -> None:
             db,
             itf,
             type_,
-            summary=f"{type_.value} on {itf.name} (HTTP {call.http_status})",
+            summary=(
+                f"{itf.name} {_TYPE_LABEL.get(type_, type_.value)} 발생"
+                + (f" (HTTP {call.http_status})" if call.http_status else "")
+            ),
             severity=severity,
         )
 
@@ -93,7 +105,7 @@ def evaluate_after_call(db: Session, itf: Interface, call: CallLog) -> None:
             db,
             itf,
             IncidentType.SLOW_RESPONSE,
-            summary=f"slow response {call.duration_ms}ms > threshold {_resp_threshold(itf)}ms",
+            summary=f"{itf.name} 응답 지연 {call.duration_ms:,}ms (임계치 {_resp_threshold(itf):,}ms)",
         )
 
     # 3) rolling failure rate
@@ -112,7 +124,7 @@ def evaluate_after_call(db: Session, itf: Interface, call: CallLog) -> None:
                 db,
                 itf,
                 IncidentType.HIGH_FAILURE_RATE,
-                summary=f"failure rate {rate:.0%} over last {ROLLING_WINDOW_MIN}m (n={total})",
+                summary=f"{itf.name} 최근 {ROLLING_WINDOW_MIN}분 실패율 {rate:.0%} ({failures}/{total}건)",
                 severity="critical",
             )
 

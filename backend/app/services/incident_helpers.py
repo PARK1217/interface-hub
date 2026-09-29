@@ -8,6 +8,8 @@ incidents 라우트와 detector 의 자동 해결 경로 양쪽에서 동일 로
 
 from __future__ import annotations
 
+from datetime import timedelta
+
 from sqlalchemy import select, update
 from sqlalchemy.orm import Session
 
@@ -34,10 +36,16 @@ _INCIDENT_TO_STATUSES: dict[IncidentType, list[CallStatus]] = {
 def related_log_query(incident: Incident, interface: Interface | None):
     """이 incident 에 묶인 call_logs 를 고르는 WHERE 절 빌더."""
     end = incident.resolved_at or now_kst()
+    start = incident.detected_at
+    if incident.type == IncidentType.HIGH_FAILURE_RATE:
+        # 실패율 incident 는 감지 직전 rolling window 의 실패들이 원인 → 그 구간부터 묶음
+        from app.services.detector import ROLLING_WINDOW_MIN
+
+        start = start - timedelta(minutes=ROLLING_WINDOW_MIN)
     base = (
         select(CallLog)
         .where(CallLog.interface_id == incident.interface_id)
-        .where(CallLog.called_at >= incident.detected_at)
+        .where(CallLog.called_at >= start)
         .where(CallLog.called_at <= end)
     )
     if incident.type == IncidentType.SLOW_RESPONSE:
