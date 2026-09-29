@@ -5,8 +5,12 @@
         <v-card variant="elevated" height="100%">
           <v-card-text>
             <div class="text-caption text-medium-emphasis">{{ kpi.label }}</div>
-            <div class="text-h4 mt-1 kpi-value" :class="kpi.color">{{ kpi.value }}</div>
-            <div class="text-caption mt-1">{{ kpi.hint }}</div>
+            <!-- 첫 응답 전엔 0 대신 스켈레톤 — 로딩 중 "전부 0" 으로 보이는 문제 방지 -->
+            <template v-if="loaded">
+              <div class="text-h4 mt-1 kpi-value" :class="kpi.color">{{ kpi.value }}</div>
+              <div class="text-caption mt-1">{{ kpi.hint }}</div>
+            </template>
+            <v-skeleton-loader v-else type="heading, text" class="kpi-skeleton" />
           </v-card-text>
         </v-card>
       </v-col>
@@ -105,6 +109,7 @@ import { formatDateTimeShort } from '@/utils/format';
 const live = useLiveStore();
 live.bind();
 
+const loaded = ref(false);
 const stats = ref({ total: 0, success: 0, failure: 0, avg_duration_ms: 0, success_rate: 0 });
 const series = ref<{ bucket: string; total: number; success: number; failure: number; avg_duration_ms: number }[]>([]);
 
@@ -225,20 +230,25 @@ const heatOpts = computed(() => {
 });
 
 async function load() {
-  const [s, t, h] = await Promise.all([
+  // 한 API 가 실패해도 나머지는 표시되도록 개별 처리
+  const [s, t, h] = await Promise.allSettled([
     CallLogs.stats(),
     CallLogs.timeseries({ bucket_minutes: 5 }),
     CallLogs.heatmap({ days: 7 }),
   ]);
-  stats.value = s.data;
-  series.value = t.data;
-  heatRows.value = h.data;
+  if (s.status === 'fulfilled') stats.value = s.value.data;
+  if (t.status === 'fulfilled') series.value = t.value.data;
+  if (h.status === 'fulfilled') heatRows.value = h.value.data;
+  loaded.value = true;
 }
 
 onMounted(load);
 </script>
 
 <style scoped>
+.kpi-skeleton {
+  background: transparent;
+}
 .heatmap-legend {
   display: flex;
   align-items: center;
