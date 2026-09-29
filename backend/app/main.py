@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import asyncio
 import logging
 from contextlib import asynccontextmanager
 
@@ -37,9 +38,17 @@ async def lifespan(app: FastAPI):  # noqa: ARG001
     log.info("noahub starting up — env=%s", settings.app_env)
     init_db()
     start_scheduler()
+    demo_task: asyncio.Task | None = None
+    if settings.demo_traffic_enabled:
+        from app.services.demo_traffic import run_forever
+
+        demo_task = asyncio.create_task(run_forever())
+        log.info("demo traffic generator enabled")
     try:
         yield
     finally:
+        if demo_task:
+            demo_task.cancel()
         stop_scheduler()
         log.info("noahub shut down")
 

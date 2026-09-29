@@ -65,10 +65,13 @@ def list_incidents(
     out = []
     for inc in incidents:
         itf = interfaces.get(inc.interface_id)
-        rel_q = related_log_query(inc, itf)
-        rel_logs = db.scalars(rel_q).all()
-        count = len(rel_logs)
-        last_call_at = max((r.called_at for r in rel_logs), default=None)
+        # 관련 호출 행 전체(JSON 요청/응답/trace 포함)를 끌어오면 오래 열린 incident
+        # 하나가 수만 행을 로딩해 목록이 멈춤 → 건수·최근시각만 DB 에서 집계.
+        count, last_call_at = db.execute(
+            related_log_query(inc, itf)
+            .with_only_columns(_func.count(CallLog.id), _func.max(CallLog.called_at))
+            .order_by(None)
+        ).one()
         out.append(_to_out(db, inc, count=count, last_call_at=last_call_at))
     return out
 

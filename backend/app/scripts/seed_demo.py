@@ -6,14 +6,14 @@ Usage (inside backend container):
 Effect:
 - Wipes existing interfaces / call_logs / incidents / sla_targets.
 - Inserts ~10 realistic external-agency interfaces a Korean insurer would use.
-- Generates ~7 days of synthetic call_logs with believable distributions.
+- Generates WINDOW_DAYS of synthetic call_logs via app.services.demo_traffic
+  (same generator the backend keeps running when DEMO_TRAFFIC_ENABLED=true).
 - Inserts a handful of resolved incidents (so the RAG index has signal).
 - Configures SLA targets per interface.
 """
 
 from __future__ import annotations
 
-import math
 import random
 from datetime import timedelta
 
@@ -28,7 +28,6 @@ from app.models.call_log import CallStatus
 from app.models.incident import IncidentType
 from app.models.interface import AuthType, InterfaceCategory, InterfaceDirection, ProtocolType
 
-random.seed(42)
 NOW = now_kst()
 WINDOW_DAYS = 60  # 2 months — enough for trend + 30-day calendar
 
@@ -220,11 +219,11 @@ SEED_INTERFACES: list[dict] = [
     {
         "name": "보험개발원-SLA리포트업로드-SFTP",
         "organization": "보험개발원 (KIDI)",
-        "description": "월간 SLA 리포트 파일 업로드 (실 SFTP)",
+        "description": "주간 SLA 리포트 파일 업로드 (실 SFTP)",
         "protocol": ProtocolType.FTP,
         "endpoint": "sftp://sftp:22/upload",
         "method": "POST",
-        "schedule_cron": "0 9 1 * *",   # 매월 1일 09:00 KST
+        "schedule_cron": "0 9 * * 1",   # 매주 월요일 09:00 KST
         "auth_type": AuthType.BASIC,
         "auth_secret_plain": "noahub:noahub_pw",
         "rps": 0.00014, "fail_rate": 0.01, "latency_ms": (520, 120),
@@ -410,12 +409,16 @@ SEED_INCIDENTS: list[dict] = [
 
 
 def _classify_log(
-    success: bool, latency: int, profile: dict
+    success: bool, latency: int, profile: dict, kind: str | None = None
 ) -> tuple[CallStatus, int | None, str | None, str | None, str | None]:
-    """Map a synthetic outcome → (status, http_status, error_msg, error_type, error_trace)."""
+    """Map a synthetic outcome → (status, http_status, error_msg, error_type, error_trace).
+
+    kind 를 주면 실패 유형 고정 (TIMEOUT/AUTH/FORMAT/SERVER) — 장애 구간 시뮬용.
+    """
     if success:
         return CallStatus.SUCCESS, 200, None, None, None
-    kind = random.choices(["TIMEOUT", "AUTH", "FORMAT", "SERVER"], weights=[1, 1, 1, 4], k=1)[0]
+    if kind is None:
+        kind = random.choices(["TIMEOUT", "AUTH", "FORMAT", "SERVER"], weights=[1, 1, 1, 4], k=1)[0]
     if kind == "TIMEOUT":
         return (
             CallStatus.TIMEOUT,
@@ -493,7 +496,7 @@ def _hash_pii(prefix: str = "") -> str:
 
 
 def _claim_no() -> str:
-    return f"CLM{NOW.strftime('%Y')}{random.randint(100000, 999999)}"
+    return f"CLM{now_kst().strftime('%Y')}{random.randint(100000, 999999)}"
 
 
 def _trace_id() -> str:
@@ -512,7 +515,7 @@ def _payloads_for(name: str) -> tuple[dict | None, dict | None]:
         resp = {
             "is_duplicate": random.random() < 0.08,
             "similar_claims": [],
-            "checked_at": NOW.isoformat(),
+            "checked_at": now_kst().isoformat(),
             "trace_id": _trace_id(),
         }
         return req, resp
@@ -525,7 +528,7 @@ def _payloads_for(name: str) -> tuple[dict | None, dict | None]:
         }
         return req, resp
     if "요양기관조회" in name:
-        req = {"as_of_date": NOW.strftime("%Y-%m-%d"), "page": 1, "size": 1000}
+        req = {"as_of_date": now_kst().strftime("%Y-%m-%d"), "page": 1, "size": 1000}
         resp = {"count": 98421, "page": 1, "next_cursor": "eyJvZmZzZXQiOjEwMDB9"}
         return req, resp
     if "운전면허확인" in name:
@@ -546,14 +549,14 @@ def _payloads_for(name: str) -> tuple[dict | None, dict | None]:
             "accounts": random.randint(2, 7),
             "cards": random.randint(1, 4),
             "total_assets_won": random.randint(5_000_000, 320_000_000),
-            "fetched_at": NOW.isoformat(),
+            "fetched_at": now_kst().isoformat(),
         }
         return req, resp
     if "전산사고보고" in name:
         req = {
-            "incident_id": f"INC{NOW.strftime('%Y%m')}{random.randint(100, 999)}",
+            "incident_id": f"INC{now_kst().strftime('%Y%m')}{random.randint(100, 999)}",
             "severity": random.choice(["WARNING", "CRITICAL"]),
-            "occurred_at": NOW.isoformat(),
+            "occurred_at": now_kst().isoformat(),
             "summary": "외부 인터페이스 5xx 다발",
         }
         resp = {"received": True, "report_no": f"FSS-{random.randint(10000, 99999)}"}
@@ -572,7 +575,7 @@ def _payloads_for(name: str) -> tuple[dict | None, dict | None]:
             "amount": random.choice([45000, 89000, 120000, 230000]),
             "order_id": f"ORD{random.randint(10**9, 10**10 - 1)}",
         }
-        resp = {"approved_at": NOW.isoformat(), "card_company": random.choice(["KB", "신한", "삼성", "현대"])}
+        resp = {"approved_at": now_kst().isoformat(), "card_company": random.choice(["KB", "신한", "삼성", "현대"])}
         return req, resp
     if "차량시세" in name:
         req = {"queue": "CARMARKET.OUT", "consumer_group": "noahub-cg-01"}
@@ -588,13 +591,13 @@ def _payloads_for(name: str) -> tuple[dict | None, dict | None]:
             "job_type": "DAILY_PREMIUM_SETTLEMENT",
             "input_dir": "/sftp/in",
             "result_dir": "/sftp/out/kidi",
-            "as_of_date": (NOW - timedelta(days=1)).strftime("%Y-%m-%d"),
+            "as_of_date": (now_kst() - timedelta(days=1)).strftime("%Y-%m-%d"),
         }
         resp = {
             "job_type": "DAILY_PREMIUM_SETTLEMENT",
             "records_processed": records,
             "errors": random.randint(0, records // 500),
-            "result_file": f"/sftp/out/kidi/premium_{(NOW - timedelta(days=1)).strftime('%Y%m%d')}.csv",
+            "result_file": f"/sftp/out/kidi/premium_{(now_kst() - timedelta(days=1)).strftime('%Y%m%d')}.csv",
             "total_won": random.randint(2_000_000_000, 6_500_000_000),
             "input_files_picked": random.randint(2, 4),
         }
@@ -612,7 +615,7 @@ def _payloads_for(name: str) -> tuple[dict | None, dict | None]:
             "records_processed": records,
             "success_records": int(records * 0.973),
             "failure_records": int(records * 0.027),
-            "ingested_at": NOW.isoformat(),
+            "ingested_at": now_kst().isoformat(),
         }
         return req, resp
     return None, None
@@ -643,87 +646,6 @@ def _failure_response(profile_status: CallStatus) -> dict | None:
     return None
 
 
-def _generate_logs(itf: Interface, profile: dict, db) -> int:
-    """Generate one row per simulated call across the WINDOW_DAYS window."""
-    start = NOW - timedelta(days=WINDOW_DAYS)
-    duration_s = WINDOW_DAYS * 24 * 3600
-    expected_total = max(1, int(profile["rps"] * duration_s / 60.0))  # rps is per-minute, soft scale
-    if expected_total > 1500:  # cap to keep seed runtime reasonable
-        expected_total = 1500
-
-    rows = []
-    mean, std = profile["latency_ms"]
-    base_fail = profile["fail_rate"]
-    req_template, resp_template = _payloads_for(itf.name)
-
-    # 30% chance an interface has a "bad window" in the last 24h
-    bad_start = NOW - timedelta(hours=random.randint(2, 22)) if random.random() < 0.3 else None
-    bad_end = bad_start + timedelta(hours=random.randint(1, 4)) if bad_start else None
-
-    for _ in range(expected_total):
-        # uniform-ish timestamp across the window
-        ts = start + timedelta(seconds=random.uniform(0, duration_s))
-        # diurnal: weight more business-hour traffic (KST 9-18 ≈ UTC 0-9)
-        if random.random() < 0.4:  # 40% reroll into business hours
-            day_offset = random.randint(0, WINDOW_DAYS - 1)
-            ts = (start + timedelta(days=day_offset)).replace(
-                hour=random.randint(0, 9), minute=random.randint(0, 59),
-                second=random.randint(0, 59), microsecond=0,
-            )
-        in_bad = bad_start is not None and bad_start <= ts <= bad_end
-
-        fail_rate = base_fail * (5 if in_bad else 1)
-        latency_mean = mean * (2.5 if in_bad else 1)
-        latency = max(5, int(random.lognormvariate(math.log(max(latency_mean, 1)), 0.4)))
-        success = random.random() > min(fail_rate, 0.6)
-        status, http_status, err, err_type, err_trace = _classify_log(success, latency, profile)
-
-        # 자동 재시도 시뮬 — retry_max>0 인 인터페이스에서 1차 실패한 5xx/timeout
-        # 호출 중 일부가 재시도로 복구된 흔적을 남김 (RetryAnalytics 페이지가 보여줄 데이터).
-        # 현실 가정: 재시도로 60% 정도는 살아남고 나머지는 끝까지 실패.
-        attempt_count = 1
-        if (
-            itf.retry_max
-            and itf.retry_max > 0
-            and not success
-            and status in (CallStatus.SERVER_ERROR, CallStatus.TIMEOUT, CallStatus.FAILURE)
-        ):
-            # 1~retry_max 중 랜덤 (1=처음 호출만, 그 이상은 재시도 발생)
-            attempt_count = random.randint(2, itf.retry_max + 1)
-            # 60% 확률로 최종 SUCCESS 로 복구
-            if random.random() < 0.6:
-                success = True
-                status, http_status, err, err_type, err_trace = _classify_log(True, latency, profile)
-                # 재시도 후 성공이면 latency 는 누적 (대략 attempt × 단일)
-                latency = latency * attempt_count
-
-        # snapshot a fresh body per row so request varies (different claim_no etc.)
-        req_body, succ_body = _payloads_for(itf.name)
-        rows.append(
-            CallLog(
-                interface_id=itf.id,
-                request={
-                    "method": itf.method,
-                    "endpoint": itf.endpoint,
-                    "headers": {"X-Request-ID": _trace_id(), "Content-Type": "application/json"},
-                    "body": req_body,
-                },
-                response=succ_body if success else _failure_response(status),
-                status=status,
-                http_status=http_status,
-                duration_ms=latency,
-                error_message=err,
-                error_type=err_type,
-                error_trace=err_trace,
-                triggered_by="schedule" if itf.schedule_cron else "manual",
-                called_at=ts,
-                attempt_count=attempt_count,
-            )
-        )
-    db.add_all(rows)
-    return len(rows)
-
-
 def _seed_mq_messages() -> int:
     """Push demo messages to Redis LISTs so MQ interfaces have something to pop."""
     try:
@@ -742,7 +664,7 @@ def _seed_mq_messages() -> int:
             "estimated_won": random.randint(15_000_000, 75_000_000),
             "vin_hash": _hash_pii("vin-"),
             "trace_id": _trace_id(),
-            "produced_at": NOW.isoformat(),
+            "produced_at": now_kst().isoformat(),
         }
         client.rpush("CARMARKET.OUT", _json_dumps(msg))
         pushed += 1
@@ -764,6 +686,7 @@ SEED_USERS: list[dict] = [
 
 
 def main() -> None:
+    random.seed(42)
     init_db()
     db = SessionLocal()
     try:
@@ -835,11 +758,13 @@ def main() -> None:
         db.commit()
         print(f"✓ {len(name_to_itf)} interfaces + SLA targets")
 
-        total_logs = 0
-        for spec in SEED_INTERFACES:
-            itf = name_to_itf[spec["name"]]
-            total_logs += _generate_logs(itf, spec, db)
-        db.commit()
+        # 호출 이력은 실시간 생성기와 같은 로직으로 — 과거 이력과 이후 트래픽이 끊김 없이 이어짐.
+        # 기간 중 장애 구간(incident 열림 → 원인·조치와 함께 해결)도 함께 생성됨.
+        from app.services.demo_traffic import burst_logs, simulate_range
+
+        total_logs = len(simulate_range(
+            db, NOW - timedelta(days=WINDOW_DAYS), NOW, include_cron=True
+        ))
         print(f"✓ {total_logs} call logs ({WINDOW_DAYS}일치)")
 
         for inc in SEED_INCIDENTS:
@@ -858,6 +783,10 @@ def main() -> None:
                     resolved_at=resolved,
                 )
             )
+            spec = next(p for p in SEED_INTERFACES if p["name"] == inc["interface_name"])
+            db.add_all(burst_logs(
+                itf, spec, inc["type"], detected, resolved, random.randint(8, 20)
+            ))
         db.commit()
         print(f"✓ {len(SEED_INCIDENTS)} resolved incidents (RAG seed)")
 

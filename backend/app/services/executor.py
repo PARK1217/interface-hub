@@ -417,7 +417,13 @@ async def execute_interface(
     # 재시도 정책은 REST/SOAP 만 적용 — SFTP/MQ/BATCH 는 멱등성 보장 어렵고
     # (PUT 두 번이면 파일 두 개, MQ 는 메시지 두 번 소비) Phase 2 외부 호출의
     # 핵심 목표인 "외부 기관 일시 장애 흡수" 는 HTTP 계열에서 가장 가치 큼.
-    if itf.protocol == ProtocolType.REST:
+    if get_settings().demo_traffic_enabled and itf.protocol in (ProtocolType.REST, ProtocolType.SOAP):
+        # 시연 모드: 시드 기관 endpoint 는 실존하지 않아 실제 호출 시 전부 실패 →
+        # 인터페이스 프로파일(실패율·지연·재시도) 기반 결과로 대체
+        from app.services.demo_traffic import simulate_call
+
+        http_status, response, exc, attempts = await simulate_call(itf)
+    elif itf.protocol == ProtocolType.REST:
         http_status, response, exc, attempts = await _exec_with_retry(itf, _exec_rest)
     elif itf.protocol == ProtocolType.SOAP:
         http_status, response, exc, attempts = await _exec_with_retry(itf, _exec_soap)

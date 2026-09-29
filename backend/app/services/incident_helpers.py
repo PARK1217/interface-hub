@@ -65,11 +65,13 @@ def mark_related_handled(
 
     반환: 마킹된 행 수.
     """
-    rows = db.scalars(
-        related_log_query(incident, interface).where(CallLog.is_reprocessed.is_(False))
-    ).all()
-    if not rows:
+    # id 만 조회 — 오래 열린 incident 는 관련 행이 수만 건이라 전체 행 로딩 시 느려짐
+    log_ids = list(db.scalars(
+        related_log_query(incident, interface)
+        .where(CallLog.is_reprocessed.is_(False))
+        .with_only_columns(CallLog.id)
+    ).all())
+    if not log_ids:
         return 0
-    log_ids = [r.id for r in rows]
     db.execute(update(CallLog).where(CallLog.id.in_(log_ids)).values(is_reprocessed=True))
     return len(log_ids)

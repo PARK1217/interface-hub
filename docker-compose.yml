@@ -46,6 +46,8 @@ services:
       - ./backend/.env
     environment:
       TZ: Asia/Seoul
+      # 시연용 합성 트래픽 (backend/app/services/demo_traffic.py)
+      DEMO_TRAFFIC_ENABLED: "true"
     depends_on:
       postgres:
         condition: service_healthy

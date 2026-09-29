@@ -73,6 +73,9 @@ class Settings(BaseSettings):
     password_min_length: int = 8
     password_require_complexity: bool = True  # 영문/숫자/특수문자 중 3종
 
+    # 시연 모드 — 합성 트래픽 생성 + REST/SOAP 실행 시뮬레이션 (app/services/demo_traffic.py)
+    demo_traffic_enabled: bool = False
+
     cors_origins: list[str] = ["http://localhost:5173", "http://127.0.0.1:5173"]
 
 
