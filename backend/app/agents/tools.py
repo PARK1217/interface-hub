@@ -111,7 +111,7 @@ def _interface_tokens(itf: Interface) -> set[str]:
 
 @tool(response_format="content_and_artifact")
 def find_rca_target(question: str) -> tuple[str, dict]:
-    """질문에 나온 인터페이스 이름·기관명으로 원인 분석 대상(가장 최근 열린 장애)을 찾습니다.
+    """질문에 나온 인터페이스 이름·기관명으로 원인 분석 대상 장애를 찾습니다 (열린 장애 우선, 없으면 최근 7일).
     artifact = {"incident_id": int|None, "interface_ids": [...]}. 못 찾으면 incident_id=None (되묻기)."""
     q = (question or "").lower()
     with readonly_session() as db:
@@ -126,11 +126,17 @@ def find_rca_target(question: str) -> tuple[str, dict]:
         inc = db.scalar(
             select(Incident).where(Incident.interface_id.in_(ids)).where(Incident.resolved_at.is_(None))
             .order_by(desc(Incident.detected_at)).limit(1)
+        ) or db.scalar(  # 열린 장애가 없으면 최근 7일 안의 가장 최근 장애 (사후 분석)
+            select(Incident).where(Incident.interface_id.in_(ids))
+            .where(Incident.detected_at >= now_kst() - timedelta(days=7))
+            .order_by(desc(Incident.detected_at)).limit(1)
         )
-        found = (inc.id, inc.interface_id) if inc is not None else None
+        found = (inc.id, inc.interface_id, inc.resolved_at is None) if inc is not None else None
     if found is None:
-        return f"대상 인터페이스({names})에 열린 장애가 없음", {"incident_id": None, "interface_ids": ids}
-    return f"대상 장애 #{found[0]} (interface_id={found[1]})", {"incident_id": found[0], "interface_ids": ids}
+        return f"대상 인터페이스({names})에 최근 7일 장애가 없음", {"incident_id": None, "interface_ids": ids}
+    state = "열린 장애" if found[2] else "최근 해결된 장애"
+    return (f"대상 {state} #{found[0]} (interface_id={found[1]})",
+            {"incident_id": found[0], "interface_ids": ids, "open": found[2]})
 
 
 @tool(response_format="content_and_artifact")

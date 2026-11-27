@@ -134,7 +134,10 @@ def _apply_demo_migrations() -> None:
         return
     with engine.begin() as conn:
         for stmt in _DEMO_MIGRATIONS:
+            # 문장마다 SAVEPOINT — 한 줄이 실패해도 트랜잭션 전체가 aborted 되어
+            # 뒤 문장이 모두 무시되는 일을 막음 (전에는 마지막 INSERT 실패가 뒤에 더한 줄을 막았음)
             try:
-                conn.execute(text(stmt))
+                with conn.begin_nested():
+                    conn.execute(text(stmt))
             except Exception as e:  # noqa: BLE001
                 log.warning("데모 마이그레이션 스킵: %s — %s", stmt, e)

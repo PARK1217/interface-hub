@@ -104,6 +104,18 @@
         </template>
         <template #item.actions="{ item }">
           <v-btn
+            class="mr-1"
+            color="deep-orange"
+            size="small"
+            variant="text"
+            prepend-icon="mdi-stethoscope"
+            :loading="rcaLoadingId === item.id"
+            title="장애 원인 분석 에이전트 — 최근 호출 로그·재시도·SLA·이상 점수·과거 사례로 원인 가설 제안 (실행은 하지 않음)"
+            @click="analyze(item)"
+          >
+            원인 분석
+          </v-btn>
+          <v-btn
             v-if="!item.resolved_at && auth.canMutate"
             color="success"
             size="small"
@@ -192,13 +204,55 @@
       </v-card>
     </v-dialog>
 
+    <!-- 원인 분석 결과 -->
+    <v-dialog v-model="rcaDialog" max-width="900" scrollable>
+      <v-card v-if="rcaTarget">
+        <v-card-title class="d-flex align-center flex-wrap ga-2">
+          <v-icon icon="mdi-stethoscope" color="deep-orange" />
+          <span>장애 원인 분석</span>
+          <v-chip size="small" color="info">incident #{{ rcaTarget.id }}</v-chip>
+          <v-spacer />
+          <v-chip v-if="rcaResult" size="small" :color="rcaResult.mode === 'llm' ? 'primary' : 'grey'" variant="tonal">
+            {{ rcaResult.mode === 'llm' ? `${rcaResult.provider} · ${rcaResult.model}` : 'Fallback (근거 요약)' }}
+          </v-chip>
+        </v-card-title>
+        <v-card-subtitle>{{ rcaTarget.summary }}</v-card-subtitle>
+        <v-card-text>
+          <v-progress-linear v-if="!rcaResult" indeterminate color="deep-orange" />
+          <template v-else>
+            <v-alert v-if="rcaResult.llm_error" type="warning" variant="tonal" density="compact" class="mb-3">
+              <strong>{{ rcaResult.llm_error.title }}</strong> — {{ rcaResult.llm_error.detail }}
+            </v-alert>
+            <div class="ai-answer-md" v-html="rcaHtml" @click="onAnswerClick" />
+            <div class="text-caption text-medium-emphasis mt-3">
+              에이전트는 원인 가설과 점검 순서만 제안합니다. 재처리·음소거·해결 처리는 이 화면의 기존 버튼으로 운영자가 직접 실행하세요.
+            </div>
+          </template>
+        </v-card-text>
+        <v-card-actions>
+          <v-btn
+            v-if="rcaResult?.run_id && auth.canViewAgentRuns"
+            variant="text"
+            prepend-icon="mdi-timeline-text-outline"
+            :to="`/agent-runs?run=${rcaResult.run_id}`"
+          >
+            실행 기록 보기
+          </v-btn>
+          <v-spacer />
+          <v-btn @click="rcaDialog = false">닫기</v-btn>
+        </v-card-actions>
+      </v-card>
+    </v-dialog>
+
     <v-snackbar v-model="snack.show" :color="snack.color" timeout="2500">{{ snack.text }}</v-snackbar>
   </div>
 </template>
 
 <script setup lang="ts">
 import { computed, onMounted, reactive, ref, watch } from 'vue';
-import { Incidents, type CallLogItem, type IncidentItem } from '@/api/client';
+import { marked } from 'marked';
+import DOMPurify from 'dompurify';
+import { AI, Incidents, type AiAnswer, type CallLogItem, type IncidentItem } from '@/api/client';
 import { formatDateTime } from '@/utils/format';
 import { useAuthStore } from '@/stores/auth';
 import { useRoute, useRouter } from 'vue-router';
@@ -234,7 +288,7 @@ const headers = [
   { title: '요약', key: 'summary' },
   { title: '관련 호출', key: 'related_log_count', width: 110 },
   { title: '해결 시각', key: 'resolved_at' },
-  { title: '', key: 'actions', sortable: false, align: 'end' as const, width: 160 },
+  { title: '', key: 'actions', sortable: false, align: 'end' as const, width: 260 },
 ];
 
 const relatedHeaders = [
@@ -248,6 +302,44 @@ const relatedHeaders = [
 ];
 
 const rows = ref<IncidentItem[]>([]);
+
+// --- 장애 원인 분석 에이전트 ---
+const rcaDialog = ref(false);
+const rcaTarget = ref<IncidentItem | null>(null);
+const rcaResult = ref<AiAnswer | null>(null);
+const rcaLoadingId = ref<number | null>(null);
+const rcaHtml = computed(() =>
+  rcaResult.value ? DOMPurify.sanitize(marked.parse(rcaResult.value.answer, { async: false, gfm: true, breaks: true }) as string) : '',
+);
+
+async function analyze(item: IncidentItem) {
+  rcaTarget.value = item;
+  rcaResult.value = null;
+  rcaDialog.value = true;
+  rcaLoadingId.value = item.id;
+  try {
+    const res = await AI.rca(item.id);
+    rcaResult.value = res.data;
+  } catch {
+    rcaDialog.value = false;
+    snack.text = '원인 분석에 실패했습니다';
+    snack.color = 'error';
+    snack.show = true;
+  } finally {
+    rcaLoadingId.value = null;
+  }
+}
+
+// 답변 속 [#ID](/incidents?focus=ID) 링크를 SPA 라우팅으로
+function onAnswerClick(e: MouseEvent) {
+  const a = (e.target as HTMLElement).closest('a');
+  const href = a?.getAttribute('href');
+  if (href && href.startsWith('/')) {
+    e.preventDefault();
+    rcaDialog.value = false;
+    router.push(href);
+  }
+}
 const loading = ref(false);
 const unresolvedOnly = ref(false);
 const snack = reactive({ show: false, text: '', color: 'success' });

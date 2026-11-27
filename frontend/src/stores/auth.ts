@@ -35,6 +35,8 @@ export const useAuthStore = defineStore('auth', {
     isAdmin: (s) => s.user?.role === 'ADMIN',
     isOperator: (s) => s.user?.role === 'OPERATOR' || s.user?.role === 'ADMIN',
     canMutate: (s) => s.user?.role === 'OPERATOR' || s.user?.role === 'ADMIN',
+    // 에이전트 실행 기록 (백오피스) — 감사 로그와 같은 권한 (다른 사용자의 질문이 보이므로 OPERATOR 제외)
+    canViewAgentRuns: (s) => s.user?.role === 'ADMIN' || s.user?.role === 'VIEWER',
     // 강제 비밀번호 변경 필요 여부
     mustChangePassword: (s) => !!s.user?.must_change_password,
   },

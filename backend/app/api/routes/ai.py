@@ -3,7 +3,7 @@ from __future__ import annotations
 import random
 from datetime import timedelta
 
-from fastapi import APIRouter, Depends, Query
+from fastapi import APIRouter, Depends, HTTPException, Query
 from pydantic import BaseModel
 from sqlalchemy import desc, func, select
 from sqlalchemy.orm import Session
@@ -72,6 +72,13 @@ class AskResponse(BaseModel):
     repeated_failure: bool = False
     # 캐시 hit 여부 (UI ⚡ 칩 표시용)
     cached: bool = False
+    # 에이전트 전환 후 추가 — 실제로 일한 에이전트 / 실행 기록 id (백오피스 /agent-runs)
+    route: str | None = None
+    run_id: str | None = None
+
+
+class RcaRequest(BaseModel):
+    incident_id: int
 
 
 class AnomalyResponse(BaseModel):
@@ -122,6 +129,19 @@ async def ask(
     """
     rag = RagService(db)
     return AskResponse(**(await rag.ask(payload.question, top_k=payload.top_k, actor=current)))
+
+
+@router.post("/rca", response_model=AskResponse)
+async def rca(
+    payload: RcaRequest,
+    db: Session = Depends(get_db),
+    current: User = Depends(get_current_user),
+) -> AskResponse:
+    """장애 원인 분석 (장애 화면 "원인 분석" 버튼). 읽기 전용 — 재처리·해결 처리는 하지 않음."""
+    if db.get(Incident, payload.incident_id) is None:
+        raise HTTPException(status_code=404, detail="incident not found")
+    rag = RagService(db)
+    return AskResponse(**(await rag.analyze_incident(payload.incident_id, actor=current)))
 
 
 @router.get("/anomaly/{interface_id}", response_model=AnomalyResponse)

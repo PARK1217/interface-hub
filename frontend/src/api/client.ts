@@ -269,7 +269,23 @@ export const AI = {
   myHistory: (limit = 20, include_failed = false) =>
     api.get<AiHistoryItem[]>('/ai/my-history', { params: { limit, include_failed } }),
   suggestions: (limit = 4) => api.get<AiSuggestion[]>('/ai/suggestions', { params: { limit } }),
+  // 장애 원인 분석 에이전트 (읽기 전용 — 재처리·해결 처리는 하지 않음)
+  rca: (incidentId: number) =>
+    api.post<AiAnswer>('/ai/rca', { incident_id: incidentId }, { timeout: AI_ASK_TIMEOUT_MS }),
 };
+
+export interface AiAnswer {
+  answer: string;
+  mode: string;
+  provider: string | null;
+  model: string | null;
+  intent: string;
+  outcome: string;
+  route: string | null;
+  run_id: string | null;
+  similar_cases: { incident_id: number; score: number; content: string; type: string }[];
+  llm_error: { title: string; detail: string; suggestion: string } | null;
+}
 
 export interface PercentileRow {
   interface_id: number;
