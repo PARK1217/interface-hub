@@ -27,9 +27,9 @@ jobs:
         run: ruff check .
       - name: Test
         env:
-          SECRET_KEY: ZGV2LW9ubHktcmVwbGFjZS1pbi1wcm9kdWN0aW9uLTAwMDAwMA==
+          SECRET_KEY: ZGV2LW9ubHktY2ktdGVzdC1rZXktbm90LXByb2QtMDA=  # base64(32바이트 가짜 키) — AES-GCM 은 16/24/32바이트만 허용
           DATABASE_URL: "sqlite+pysqlite:///:memory:"
-        run: pytest -q tests/test_security.py tests/test_detector.py
+        run: pytest -q tests
 
   frontend:
     runs-on: ubuntu-latest
