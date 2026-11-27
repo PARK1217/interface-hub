@@ -33,6 +33,7 @@ from app.agents.nodes import (
 from app.agents.state import AgentState
 from app.agents.tracing import Tracer
 from app.core.config import get_settings
+from app.services.ai.rag import log_query
 
 log = logging.getLogger("noahub.agents.graph")
 
@@ -79,14 +80,23 @@ def mermaid() -> str:
 
 async def _run(state: AgentState) -> dict:
     tracer: Tracer = state["tracer"]
-    await tracer.open()
     try:
         out = await graph(state["entry"]).ainvoke(state, config={"recursion_limit": get_settings().agent_recursion_limit})
     except Exception as e:
         await tracer.close(route=None, status="error", outcome=None, error=f"{type(e).__name__}: {e}")
         raise
     res = out["response"]
-    await tracer.close(route=out.get("route"), status=run_status(res), outcome=res.get("outcome"))
+
+    # 채팅 질의만 ai_query_logs 에 남김 (장애 화면 원인 분석은 agent_runs 에만 — 자주 묻는 질문에 섞이지 않게).
+    # 실행 기록과 같은 연결에서 이어서 쓰고, 실행 기록이 저장됐으면 run_id 로 연결.
+    def _log(db, run_id):
+        log_query(db, question=state["question"], question_hash=out.get("qhash", ""), result=res,
+                  actor_user_id=state.get("actor_user_id"), actor_username=state.get("actor_username"),
+                  hit_cache=bool(out.get("hit_cache")), run_id=run_id)
+
+    persisted = await tracer.close(route=out.get("route"), status=run_status(res), outcome=res.get("outcome"),
+                                   also=_log if state["entry"] == "chat" else None)
+    res["run_id"] = str(tracer.run_id) if persisted else None
     return res
 
 

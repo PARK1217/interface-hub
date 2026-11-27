@@ -1,6 +1,6 @@
 from functools import lru_cache
 
-from pydantic import Field
+from pydantic import Field, field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
@@ -65,6 +65,12 @@ class Settings(BaseSettings):
     agent_trace_enabled: bool = True
     llm_price_path: str = "config/llm_prices.yaml"
     usd_krw_rate: float | None = None  # 비우면 비용(원) 은 NULL ("단가 확인 필요")
+
+    @field_validator("usd_krw_rate", mode="before")
+    @classmethod
+    def _blank_rate_is_none(cls, v):
+        # .env.example 을 그대로 복사하면 "USD_KRW_RATE=" (빈 문자열) → None 으로
+        return None if v in ("", None) else v
 
     # Detection thresholds (defaults; per-interface overrides live in DB)
     default_response_ms_threshold: int = 3000

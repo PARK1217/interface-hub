@@ -23,7 +23,7 @@ from app.agents.tracing import LLMCallTracker, StepRecord
 from app.core import database
 from app.services.ai import cache as ai_cache
 from app.services.ai.llm import LLMError, current_model, current_provider, is_configured
-from app.services.ai.rag import find_recent_failure, log_query, make_response, replay_failure, template_answer
+from app.services.ai.rag import find_recent_failure, make_response, replay_failure, template_answer
 
 
 class AgentStepLimit(RuntimeError):
@@ -470,19 +470,6 @@ async def finalize_node(state: AgentState) -> dict:
     if state.get("cacheable"):
         await ai_cache.set_cached(state["qhash"], res)
 
-    # 채팅 질의만 ai_query_logs 에 남김 (장애 화면 원인 분석은 agent_runs 에만 — 자주 묻는 질문에 섞이지 않게)
-    if state.get("entry") == "chat":
-        run_id = tr.run_id if tr.persisted else None
-
-        def _log():
-            with _db() as db:
-                log_query(db, question=state["question"], question_hash=state.get("qhash", ""), result=res,
-                          actor_user_id=state.get("actor_user_id"), actor_username=state.get("actor_username"),
-                          hit_cache=bool(state.get("hit_cache")), run_id=run_id)
-
-        await asyncio.to_thread(_log)
-
     res["route"] = state.get("route")
-    res["run_id"] = str(tr.run_id) if tr.persisted else None
     step.finish(output=f"{run_status(res)} / {res.get('outcome')}")
     return {"response": res}
