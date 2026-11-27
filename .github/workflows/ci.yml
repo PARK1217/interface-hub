@@ -27,7 +27,7 @@ jobs:
         run: ruff check .
       - name: Test
         env:
-          SECRET_KEY: ZGV2LW9ubHktY2ktdGVzdC1rZXktbm90LXByb2QtMDA=  # base64(32바이트 가짜 키) — AES-GCM 은 16/24/32바이트만 허용
+          SECRET_KEY: ${{ secrets.CI_SECRET_KEY }}  # 저장소 Settings → Secrets → Actions (무작위 32바이트 base64, 테스트 전용)
           DATABASE_URL: "sqlite+pysqlite:///:memory:"
         run: pytest -q tests
 
