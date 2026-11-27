@@ -8,6 +8,6 @@ description = "테스트·CI 전용 가짜 값 (실제 키 아님)"
 regexes = [
     # _check_ai_*.py — 일부러 실패하도록 만든 가짜 Mistral 키
     '''sk-deliberately-invalid''',
-    # ci.yml SECRET_KEY — base64("dev-only…replace in production") 자리표시 값
+    # 예전 ci.yml SECRET_KEY 가짜 값 (base64 "dev-only…") — 지금은 GitHub Secret CI_SECRET_KEY 를 쓰고, 커밋 기록에만 남음
     '''^ZGV2LW9ubHk''',
 ]
