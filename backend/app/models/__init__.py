@@ -1,3 +1,4 @@
+from .agent_trace import AgentRun, AgentStep
 from .ai_query_log import AiQueryLog
 from .alert_rule import AlertRule
 from .audit_log import AuditLog
@@ -9,6 +10,8 @@ from .user import User, UserRole
 from .vector_case import VectorCase
 
 __all__ = [
+    "AgentRun",
+    "AgentStep",
     "Interface",
     "ProtocolType",
     "AuthType",

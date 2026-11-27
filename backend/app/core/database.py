@@ -10,6 +10,8 @@ log = logging.getLogger("noahub.db")
 
 _settings = get_settings()
 
+_IS_PG = _settings.database_url.startswith("postgresql")
+
 engine = create_engine(
     _settings.database_url,
     pool_pre_ping=True,
@@ -20,7 +22,8 @@ engine = create_engine(
     # → 운영자/감사관이 psql 로 직접 조회해도 KST 로 보이고, API JSON 도
     # +09:00 오프셋이 붙어 나감. docker-compose 의 TZ=Asia/Seoul 환경
     # 변수와 같이 동작.
-    connect_args={"options": "-c timezone=Asia/Seoul"},
+    # (PG 전용 옵션 — sqlite 테스트에서는 넘기지 않음)
+    connect_args={"options": "-c timezone=Asia/Seoul"} if _IS_PG else {},
 )
 
 SessionLocal = sessionmaker(bind=engine, autoflush=False, autocommit=False, expire_on_commit=False)
@@ -119,6 +122,9 @@ _DEMO_MIGRATIONS: list[str] = [
     )""",
     # 단일 행 보장 — id=1 로 upsert. 없으면 기본값으로 생성.
     """INSERT INTO alert_rules (id) VALUES (1) ON CONFLICT (id) DO NOTHING""",
+    # 에이전트 실행 기록 연결 (agent_runs 는 create_all 이 먼저 만듦)
+    "ALTER TABLE ai_query_logs ADD COLUMN IF NOT EXISTS run_id UUID REFERENCES agent_runs(run_id) ON DELETE SET NULL",
+    "CREATE INDEX IF NOT EXISTS ix_ai_query_logs_run_id ON ai_query_logs(run_id)",
 ]
 
 
