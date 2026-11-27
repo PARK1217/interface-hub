@@ -11,6 +11,7 @@ from __future__ import annotations
 
 import asyncio
 import hashlib
+import hmac
 import logging
 import re
 import time
@@ -59,9 +60,11 @@ def redact(text: Any, n: int = SUMMARY_MAX) -> str | None:
 
 
 def user_ref(user_id: int | None) -> str | None:
+    """가린 사용자 값. 서버 비밀값으로 HMAC — 순번 id 를 단순 해시하면 1..N 을 대입해 되돌릴 수 있음."""
     if user_id is None:
         return None
-    return "u_" + hashlib.sha256(f"noahub-user-{user_id}".encode()).hexdigest()[:8]
+    key = (get_settings().secret_key or "").encode()
+    return "u_" + hmac.new(key, f"noahub-user-{user_id}".encode(), hashlib.sha256).hexdigest()[:10]
 
 
 # ---------- 단가·비용 ---------------------------------------------------------------
@@ -202,7 +205,8 @@ class Tracer:
 @dataclass
 class LLMCall:
     provider: str | None
-    model: str | None
+    model: str | None             # 응답이 알려 준 모델 (예: gpt-4o-mini-2024-07-18)
+    requested_model: str | None = None   # 설정에서 요청한 모델 (예: gpt-4o-mini) — 단가 조회·응답 표시용
     ok: bool = False
     text: str = ""
     error: BaseException | None = None
@@ -232,7 +236,7 @@ class LLMCallTracker(BaseCallbackHandler):
         md = metadata or {}
         provider = md.get("agent_provider") or md.get("ls_provider")
         model = md.get("agent_model") or md.get("ls_model_name")
-        call = LLMCall(provider=provider, model=model)
+        call = LLMCall(provider=provider, model=model, requested_model=model)
         self.calls.append(call)
         step = None
         if self.tracer is not None:
@@ -263,7 +267,10 @@ class LLMCallTracker(BaseCallbackHandler):
             step.model = call.model
             step.input_tokens = call.input_tokens
             step.output_tokens = call.output_tokens
-            step.cost_krw = cost_krw(call.provider, call.model, call.input_tokens, call.output_tokens)
+            # 응답 모델 이름(스냅샷)으로 먼저 찾고, 단가표에 없으면 요청한 모델 이름으로
+            step.cost_krw = (cost_krw(call.provider, call.model, call.input_tokens, call.output_tokens)
+                             if price_for(call.provider, call.model) != (None, None)
+                             else cost_krw(call.provider, call.requested_model, call.input_tokens, call.output_tokens))
             step.finish(output=call.text or None, error=None if call.ok else "빈 응답")
 
     def on_llm_error(self, error: BaseException, *, run_id: uuid.UUID, **kwargs: Any) -> None:

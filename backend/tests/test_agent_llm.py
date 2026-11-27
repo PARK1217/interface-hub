@@ -114,3 +114,22 @@ def test_redact_masks_secrets():
     s = tracing.redact("문의 admin@example.com 010-1234-5678 Authorization: Bearer abc.def.ghi api_key=sk-deliberately-invalid-key-0000")
     assert "example.com" not in s and "1234-5678" not in s and "abc.def" not in s and "sk-deliberately" not in s
     assert len(tracing.redact("가" * 500)) <= tracing.SUMMARY_MAX + 1
+
+
+async def test_snapshot_model_name_still_priced(two_providers, monkeypatch):
+    # OpenAI 는 응답에 날짜 붙은 스냅샷 이름을 돌려줌 → 단가는 요청한 이름으로 찾고, 응답 model 은 설정 이름 그대로
+    monkeypatch.setattr(agent_llm, "build_chat_model", lambda p, m: _fake_ok("답", 1000, 100, "gpt-4o-mini-2024-07-18"))
+    s = Settings(ai_provider="openai", openai_api_key="k", usd_krw_rate=1400.0)
+    monkeypatch.setattr(legacy, "get_settings", lambda: s)
+    monkeypatch.setattr(tracing, "get_settings", lambda: s)
+    tracer = Tracer(entry="chat", user_id=None, request="q", enabled=False)
+    res, _ = await agent_llm.ainvoke_llm("stats_agent", "q", tracker=LLMCallTracker(tracer, agent_id="stats_agent"))
+    assert isinstance(res, LLMResponse) and res.model == "gpt-4o-mini"
+    step = [x for x in tracer.steps if x.kind == "llm"][0]
+    assert step.model == "gpt-4o-mini-2024-07-18" and step.cost_krw is not None
+
+
+def test_user_ref_is_keyed(monkeypatch):
+    a = tracing.user_ref(1)
+    monkeypatch.setattr(tracing, "get_settings", lambda: Settings(secret_key="another-key"))
+    assert a != tracing.user_ref(1) and a.startswith("u_")

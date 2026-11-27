@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import asyncio
 import random
 from datetime import timedelta
 
@@ -138,7 +139,13 @@ async def rca(
     current: User = Depends(get_current_user),
 ) -> AskResponse:
     """장애 원인 분석 (장애 화면 "원인 분석" 버튼). 읽기 전용 — 재처리·해결 처리는 하지 않음."""
-    if db.get(Incident, payload.incident_id) is None:
+    def _exists() -> bool:  # 이벤트 루프를 막지 않게 스레드 + 전용 세션으로
+        from app.core import database
+
+        with database.SessionLocal() as s:
+            return s.get(Incident, payload.incident_id) is not None
+
+    if not await asyncio.to_thread(_exists):
         raise HTTPException(status_code=404, detail="incident not found")
     rag = RagService(db)
     return AskResponse(**(await rag.analyze_incident(payload.incident_id, actor=current)))

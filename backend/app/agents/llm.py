@@ -241,13 +241,18 @@ async def ainvoke_llm(
         if p not in plan.models:
             continue
         call = tracker.result_for(p)
-        if call is None:  # 앞 제공사에서 끝났거나 콜백이 오지 않음
-            if final_exc is not None and last_err is None:
-                last_err = error_from_exception(final_exc, p, plan.models[p])
+        if call is None:  # 콜백이 오지 않음 — 호출 전에 실패했거나, 앞 제공사에서 이미 끝남
+            later_ran = any(tracker.result_for(q) is not None for q in plan.chain[plan.chain.index(p) + 1:])
+            if later_ran or (final_exc is not None and last_err is None):
+                last_err = (error_from_exception(final_exc, p, plan.models[p]) if final_exc is not None and not later_ran
+                            else LLMError(kind="unknown", provider=p, title="호출 전 실패",
+                                          detail=f"{p} 모델 호출이 시작되지 못했습니다.",
+                                          suggestion="모델 이름·설정값을 확인하세요."))
                 attempts.append(_attempt(last_err))
             continue
         if call.ok:
-            return LLMResponse(provider=p, model=call.model or plan.models[p], content=call.text), attempts
+            # 응답·ai_query_logs 의 model 은 전환 전처럼 설정한 이름 (스냅샷 이름은 agent_steps.model 에만)
+            return LLMResponse(provider=p, model=plan.models[p], content=call.text), attempts
         last_err = error_from_exception(call.error, p, call.model or plan.models[p])
         attempts.append(_attempt(last_err))
     return last_err or LLMError(
@@ -274,5 +279,4 @@ async def chat_once(provider: str, prompt: str, *, system: str | None = None) ->
         msg = await runnable.ainvoke(messages, config={"callbacks": [tracker]})
     except Exception as e:  # noqa: BLE001
         return error_from_exception(e, provider, model)
-    call = tracker.result_for(provider)
-    return LLMResponse(provider=provider, model=(call.model if call else None) or model, content=message_text(msg))
+    return LLMResponse(provider=provider, model=model, content=message_text(msg))

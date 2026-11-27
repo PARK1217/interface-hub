@@ -171,3 +171,21 @@ def test_mermaid_has_all_agents():
     m = mermaid()
     for n in ("guard", "router", "stats_agent", "config_agent", "case_agent", "rca_agent", "clarify", "finalize"):
         assert n in m
+
+
+async def test_rca_survives_failing_evidence_tool(world, monkeypatch):
+    # 근거 도구 하나(SLA)가 실패해도 나머지 근거로 답하고, 실패는 단계 기록에 남음
+    import uuid
+
+    import app.api.routes.sla as sla
+
+    def boom(*a, **k):
+        raise RuntimeError("db hiccup")
+
+    monkeypatch.setattr(sla, "_compute_row", boom)
+    res = await run_rca(12)
+    assert res["route"] == "rca_agent" and res["outcome"] == "success"
+    assert "조회 실패" in res["answer"]
+    _, steps = _run(world, uuid.UUID(res["run_id"]))
+    sla_step = next(s for s in steps if s.name == "get_sla_status")
+    assert sla_step.error and "RuntimeError" in sla_step.error

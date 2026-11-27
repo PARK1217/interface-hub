@@ -57,6 +57,17 @@ async def call_tool(state: AgentState, parent: StepRecord, budget: StepBudget, n
     return msg.content, msg.artifact
 
 
+async def call_tool_soft(state: AgentState, parent: StepRecord, budget: StepBudget, name: str, **args: Any):
+    """근거 수집용 — 도구가 실패해도 요청 전체를 멈추지 않고 빈 근거로 계속 (실패는 단계 기록에 남음).
+    권한·단계 한도 위반은 그대로 올림."""
+    try:
+        return await call_tool(state, parent, budget, name, **args)
+    except (PermissionError, AgentStepLimit):
+        raise
+    except Exception as e:  # noqa: BLE001
+        return f"(조회 실패: {type(e).__name__})", {}
+
+
 async def call_llm(state: AgentState, parent: StepRecord, budget: StepBudget, prompt: str, system: str):
     budget.spend("llm")
     tracker = LLMCallTracker(state["tracer"], agent_id=budget.agent_id, parent=parent)
@@ -353,12 +364,13 @@ async def rca_agent(state: AgentState) -> dict:
         step.finish(output=f"장애 #{incident_id} 없음 → 되묻기")
         return {"route": "clarify", "error": f"장애 #{incident_id} 를 찾지 못했습니다"}
     itf_id = detail["interface"]["id"]
-    logs_c, logs = await call_tool(state, step, budget, "get_recent_call_logs", incident_id=incident_id)
-    retry_c, retry = await call_tool(state, step, budget, "get_retry_stats", interface_id=itf_id)
-    sla_c, sla = await call_tool(state, step, budget, "get_sla_status", interface_id=itf_id)
-    anom_c, anom = await call_tool(state, step, budget, "get_anomaly_score", interface_id=itf_id)
-    _, case_art = await call_tool(state, step, budget, "search_similar_cases", question=detail["summary"], top_k=3)
-    cases = [c for c in case_art["cases"] if c["score"] >= NO_MATCH_THRESHOLD and c["incident_id"] != incident_id]
+    logs_c, logs = await call_tool_soft(state, step, budget, "get_recent_call_logs", incident_id=incident_id)
+    retry_c, retry = await call_tool_soft(state, step, budget, "get_retry_stats", interface_id=itf_id)
+    sla_c, sla = await call_tool_soft(state, step, budget, "get_sla_status", interface_id=itf_id)
+    anom_c, anom = await call_tool_soft(state, step, budget, "get_anomaly_score", interface_id=itf_id)
+    _, case_art = await call_tool_soft(state, step, budget, "search_similar_cases", question=detail["summary"], top_k=3)
+    cases = [c for c in (case_art or {}).get("cases", [])
+             if c["score"] >= NO_MATCH_THRESHOLD and c["incident_id"] != incident_id]
 
     has_evidence = bool(logs.get("total")) or bool((sla or {}).get("total_calls")) or bool((retry or {}).get("total_calls"))
     if not has_evidence:
@@ -419,8 +431,8 @@ async def rca_agent(state: AgentState) -> dict:
     res = make_response(mode="llm", provider=llm_res.provider, model=llm_res.model, answer=llm_res.content,
                         cases=cases, intent="root_cause", llm_attempts=attempts)
     step.finish(output=res["answer"])
-    # 실시간 데이터라 장애 화면 진입은 캐시하지 않음
-    return {"response": res, "cacheable": state.get("entry") != "incident"}
+    # 최근 호출·SLA·이상 점수 같은 실시간 데이터로 만든 답이라 캐시하지 않음 (채팅 진입 포함)
+    return {"response": res, "cacheable": False}
 
 
 def after_rca(state: AgentState) -> str:
