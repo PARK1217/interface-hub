@@ -142,6 +142,7 @@ async def test_rca_chat_without_target_clarifies(world, monkeypatch):
 
     monkeypatch.setattr(router, "is_configured", lambda: True)
     monkeypatch.setattr(router, "ainvoke_llm", fake)
+    monkeypatch.setattr(router, "get_settings", lambda: Settings(router_llm_fallback=True))
     res = await run_ask("우리 회사 시스템 좀 봐줄래")
     assert res["route"] == "clarify" and res["outcome"] == "need_target"
 
@@ -189,3 +190,13 @@ async def test_rca_survives_failing_evidence_tool(world, monkeypatch):
     _, steps = _run(world, uuid.UUID(res["run_id"]))
     sla_step = next(s for s in steps if s.name == "get_sla_status")
     assert sla_step.error and "RuntimeError" in sla_step.error
+
+
+async def test_rca_incident_without_interface_clarifies(world):
+    # 연결된 인터페이스가 없는 장애 → 500 이 아니라 되묻기
+    with world() as db:
+        db.add(Incident(id=99, interface_id=999, type=IncidentType.UNKNOWN, severity="warning",
+                        summary="인터페이스가 지워진 장애", detected_at=now_kst()))
+        db.commit()
+    res = await run_rca(99)
+    assert res["route"] == "clarify" and res["outcome"] == "need_target"

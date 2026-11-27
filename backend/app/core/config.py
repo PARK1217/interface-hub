@@ -5,7 +5,8 @@ from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
 class Settings(BaseSettings):
-    model_config = SettingsConfigDict(env_file=".env", case_sensitive=False, extra="ignore")
+    # env_ignore_empty: .env.example 을 그대로 복사한 빈 값(AGENT_MAX_STEPS= 등)은 기본값으로
+    model_config = SettingsConfigDict(env_file=".env", case_sensitive=False, extra="ignore", env_ignore_empty=True)
 
     app_env: str = "development"
     log_level: str = "INFO"
@@ -60,8 +61,10 @@ class Settings(BaseSettings):
     agent_model_top: str = ""
     agent_max_steps: int = 8
     agent_recursion_limit: int = 25
-    # 1: 키워드 규칙이 애매하면 LLM 으로 경로 분류 / 0: 규칙만 (전환 전과 같음)
-    router_llm_fallback: bool = True
+    # 1: 키워드 규칙이 애매하면 LLM 으로 경로 분류 / 0: 규칙만 (전환 전과 같음 — 기본값)
+    router_llm_fallback: bool = False
+    # 라우터 LLM 분류의 전체 제한 시간(제공사 대체 포함). 넘으면 규칙 결과로 (프런트 90초 타임아웃 보호)
+    router_llm_timeout_seconds: float = 8.0
     agent_trace_enabled: bool = True
     llm_price_path: str = "config/llm_prices.yaml"
     usd_krw_rate: float | None = None  # 비우면 비용(원) 은 NULL ("단가 확인 필요")

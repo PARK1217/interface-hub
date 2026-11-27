@@ -9,9 +9,9 @@ from pydantic import BaseModel
 from sqlalchemy import desc, func, select
 from sqlalchemy.orm import Session
 
-from app.api.deps import get_current_user, get_db
+from app.api.deps import get_current_user, get_db, require_role
 from app.core.time import now_kst
-from app.models import AiQueryLog, Incident, Interface, User
+from app.models import AiQueryLog, Incident, Interface, User, UserRole
 from app.services.ai.anomaly import score_anomalies
 from app.services.ai.rag import NO_MATCH_THRESHOLD, RagService, llm_status, score_questions
 
@@ -136,7 +136,8 @@ async def ask(
 async def rca(
     payload: RcaRequest,
     db: Session = Depends(get_db),
-    current: User = Depends(get_current_user),
+    # 캐시 없이 top 모델 + 도구 여러 개를 쓰는 비싼 호출이라 장애를 다루는 OPERATOR 이상만
+    current: User = Depends(require_role([UserRole.OPERATOR, UserRole.ADMIN])),
 ) -> AskResponse:
     """장애 원인 분석 (장애 화면 "원인 분석" 버튼). 읽기 전용 — 재처리·해결 처리는 하지 않음."""
     def _exists() -> bool:  # 이벤트 루프를 막지 않게 스레드 + 전용 세션으로

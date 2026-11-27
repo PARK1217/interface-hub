@@ -104,6 +104,7 @@
         </template>
         <template #item.actions="{ item }">
           <v-btn
+            v-if="auth.canMutate"
             class="mr-1"
             color="deep-orange"
             size="small"

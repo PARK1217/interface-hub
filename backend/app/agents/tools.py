@@ -1,7 +1,8 @@
 """에이전트 도구 — 기존 함수를 LangChain @tool 로 감싼 것 (로직은 옮기지 않음).
 
 규칙
-- 모든 도구는 **읽기 전용**: readonly_session() 이 ORM 쓰기(before_flush)와 SELECT 가 아닌 SQL 을 막습니다.
+- 모든 도구는 **읽기 전용**: readonly_session() 이 PG 에서는 `SET TRANSACTION READ ONLY` 로 DB 수준에서 막고,
+  ORM 쓰기(before_flush)와 SELECT 가 아닌 SQL 도 막습니다.
 - 재처리·실행·해결 처리·음소거·시크릿 조회·알림 발송 같은 함수는 어떤 도구에도 넣지 않습니다
   (config/agents.yaml forbidden_tools, tests/test_agent_tools_guard.py 가 검사).
 - 도구 결과: content(LLM 에 넣는 글) + artifact(코드가 쓰는 구조화 값). 요청·응답 본문·시크릿은 넣지 않습니다.
@@ -16,7 +17,7 @@ from datetime import timedelta
 from typing import Any
 
 from langchain_core.tools import BaseTool, tool
-from sqlalchemy import desc, event, select
+from sqlalchemy import desc, event, select, text
 from sqlalchemy.orm import Session
 
 from app.core.database import SessionLocal
@@ -37,6 +38,9 @@ class ReadOnlyViolation(PermissionError):
 @contextmanager
 def readonly_session() -> Iterator[Session]:
     db = SESSION_FACTORY()
+    if db.get_bind().dialect.name == "postgresql":
+        # DB 수준에서도 쓰기 차단 (아래 문자열 검사는 sqlite·ORM 용 보조 장치)
+        db.execute(text("SET TRANSACTION READ ONLY"))
 
     def _block_flush(session, flush_context, instances):  # noqa: ARG001
         if session.new or session.dirty or session.deleted:

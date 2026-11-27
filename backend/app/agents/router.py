@@ -4,11 +4,13 @@
 2. 기존 키워드 점수(services/ai/intent.classify_intent) → stats / config / case / general
 3. "애매함" = 점수 0(general) 또는 1·2위 동점 → ROUTER_LLM_FALLBACK=1 이고 LLM 이 설정돼 있으면
    LLM 분류 1회 (stats_query / config_query / case_lookup / root_cause 중 하나만 답하게 함)
-4. LLM 이 없거나 실패하거나 엉뚱하게 답하면 규칙 결과 사용 (general → case_agent) — 전환 전과 같은 동작
+4. LLM 이 없거나 실패하거나 엉뚱하게 답하거나 ROUTER_LLM_TIMEOUT_SECONDS 를 넘기면 규칙 결과 사용
+   (general → case_agent) — 전환 전과 같은 동작. ROUTER_LLM_FALLBACK 기본값은 0(끔)
 """
 
 from __future__ import annotations
 
+import asyncio
 import re
 from dataclasses import dataclass
 
@@ -65,7 +67,14 @@ async def decide(question: str, *, incident_id: int | None, tracer: Tracer | Non
         return RouteDecision(rule, rule, agent_for(rule), "rule", ambiguous)
 
     tracker = LLMCallTracker(tracer, agent_id="router", parent=parent)
-    res, _ = await ainvoke_llm("router", f"[질문]\n{question}", system=ROUTER_SYSTEM, tracker=tracker)
+    try:
+        # 제공사당 60초 × 대체 체인이 되지 않도록 라우터 분류 전체에 짧은 제한 시간
+        res, _ = await asyncio.wait_for(
+            ainvoke_llm("router", f"[질문]\n{question}", system=ROUTER_SYSTEM, tracker=tracker),
+            timeout=get_settings().router_llm_timeout_seconds,
+        )
+    except TimeoutError:
+        return RouteDecision(rule, rule, agent_for(rule), "rule(llm 시간 초과)", ambiguous)
     choice = parse_choice(res.content) if isinstance(res, LLMResponse) else None
     if choice is None:
         return RouteDecision(rule, rule, agent_for(rule), "rule(llm 실패)", ambiguous)

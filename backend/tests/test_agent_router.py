@@ -48,6 +48,8 @@ def llm_says(monkeypatch):
 
         monkeypatch.setattr(router, "is_configured", lambda: True)
         monkeypatch.setattr(router, "ainvoke_llm", fake)
+        # 라우터 LLM 분류는 기본 꺼짐 → 이 픽스처에서만 켬
+        monkeypatch.setattr(router, "get_settings", lambda: Settings(router_llm_fallback=True))
         return calls
 
     return _set
@@ -79,3 +81,33 @@ async def test_router_llm_fallback_off(llm_says, monkeypatch):
     monkeypatch.setattr(router, "get_settings", lambda: Settings(router_llm_fallback=False))
     d = await router.decide("보험개발원 상태 좀 봐줘", incident_id=None, tracer=None, parent=None)
     assert calls == [] and d.method == "rule"
+
+
+async def test_llm_routing_is_off_by_default(monkeypatch):
+    # 기본 설정(ROUTER_LLM_FALLBACK 미설정)에서는 LLM 이 설정돼 있어도 분류에 쓰지 않음 = 전환 전과 같은 동작
+    calls: list[str] = []
+
+    async def fake(agent_id, prompt, *, system=None, tracker=None):
+        calls.append(agent_id)
+        return LLMResponse(provider="fake", model="fake", content="root_cause"), []
+
+    monkeypatch.setattr(router, "is_configured", lambda: True)
+    monkeypatch.setattr(router, "ainvoke_llm", fake)
+    monkeypatch.setattr(router, "get_settings", lambda: Settings())
+    d = await router.decide("보험개발원 상태 좀 봐줘", incident_id=None, tracer=None, parent=None)
+    assert calls == [] and (d.agent_id, d.method) == ("case_agent", "rule")
+
+
+async def test_router_llm_timeout_falls_back_to_rule(monkeypatch):
+    import asyncio
+
+    async def slow(agent_id, prompt, *, system=None, tracker=None):
+        await asyncio.sleep(5)
+        return LLMResponse(provider="fake", model="fake", content="root_cause"), []
+
+    monkeypatch.setattr(router, "is_configured", lambda: True)
+    monkeypatch.setattr(router, "ainvoke_llm", slow)
+    monkeypatch.setattr(router, "get_settings",
+                        lambda: Settings(router_llm_fallback=True, router_llm_timeout_seconds=0.05))
+    d = await router.decide("보험개발원 상태 좀 봐줘", incident_id=None, tracer=None, parent=None)
+    assert (d.agent_id, d.method) == ("case_agent", "rule(llm 시간 초과)")

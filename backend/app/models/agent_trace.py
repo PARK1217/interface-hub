@@ -1,6 +1,6 @@
 """에이전트 실행 기록 — agent_runs(요청 1건) / agent_steps(단계).
 
-양식: D:/agent-prompt/agent-standard/templates/agent_trace_schema.sql
+양식: 에이전트 전환 기준의 agent_trace_schema.sql
 - 양식에 더한 컬럼: agent_runs.outcome (기존 ai_query_logs.outcome 값 그대로 — success / no_match / ...)
 - 기존 ai_query_logs 는 ai_query_logs.run_id 로 이 테이블과 연결 (지우거나 바꾸지 않음)
 - 요약 컬럼에는 가린 요약만 저장 (app/agents/tracing.redact)

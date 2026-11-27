@@ -363,6 +363,9 @@ async def rca_agent(state: AgentState) -> dict:
     if not detail:
         step.finish(output=f"장애 #{incident_id} 없음 → 되묻기")
         return {"route": "clarify", "error": f"장애 #{incident_id} 를 찾지 못했습니다"}
+    if not detail.get("interface"):
+        step.finish(output=f"장애 #{incident_id} 에 연결된 인터페이스 없음 → 되묻기")
+        return {"route": "clarify", "error": f"장애 #{incident_id} 에 연결된 인터페이스를 찾지 못했습니다"}
     itf_id = detail["interface"]["id"]
     logs_c, logs = await call_tool_soft(state, step, budget, "get_recent_call_logs", incident_id=incident_id)
     retry_c, retry = await call_tool_soft(state, step, budget, "get_retry_stats", interface_id=itf_id)
