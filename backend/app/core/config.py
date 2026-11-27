@@ -50,6 +50,22 @@ class Settings(BaseSettings):
     # 빈 값이면 ai_provider + 키가 설정된 나머지 프로바이더 순으로 자동 구성.
     ai_fallback_chain: str = ""
 
+    # --- 에이전트 (LangGraph + LangChain) -------------------------------------
+    # 제공사 순서는 위의 AI_PROVIDER / AI_FALLBACK_CHAIN 을 그대로 씀.
+    agent_config_path: str = "config/agents.yaml"
+    # 수준별 모델 — "제공사:모델" 을 쉼표로 이은 목록 (예: "mistral:mistral-small-latest,openai:gpt-4o-mini").
+    # 제공사 없이 이름만 쓰면 모든 제공사에 같은 이름. 비우면 AI_MODEL → 제공사 기본 모델 (전환 전과 같음).
+    agent_model_fast: str = ""
+    agent_model_balanced: str = ""
+    agent_model_top: str = ""
+    agent_max_steps: int = 8
+    agent_recursion_limit: int = 25
+    # 1: 키워드 규칙이 애매하면 LLM 으로 경로 분류 / 0: 규칙만 (전환 전과 같음)
+    router_llm_fallback: bool = True
+    agent_trace_enabled: bool = True
+    llm_price_path: str = "config/llm_prices.yaml"
+    usd_krw_rate: float | None = None  # 비우면 비용(원) 은 NULL ("단가 확인 필요")
+
     # Detection thresholds (defaults; per-interface overrides live in DB)
     default_response_ms_threshold: int = 3000
     default_failure_rate_threshold: float = 0.10  # 10%

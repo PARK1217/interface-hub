@@ -1,9 +1,10 @@
-"""LLM 프로바이더 추상화 — Mistral / Anthropic / HuggingFace / OpenAI 통합.
+"""LLM 프로바이더 설정·오류 분류 — Mistral / Anthropic / HuggingFace / OpenAI.
 
 설계 메모:
-- httpx 직접 호출 (각 프로바이더 SDK 의존성 없이 가벼움).
+- 실제 호출은 LangChain 채팅 모델 어댑터(app/agents/llm.py)가 합니다. 이 모듈은
+  제공사 순서(resolve_chain), 키 확인, 오류 분류(LLMError) 를 맡습니다.
 - AI_PROVIDER 환경변수로 선택. 키 없거나 'fallback' 이면 LLMError("not_configured") 반환 →
-  rag.ask_fallback (TF-IDF 템플릿) 으로 폴백.
+  TF-IDF 템플릿 / 통계 표 그대로 답으로 폴백.
 - 응답 형태:
     - 성공 → LLMResponse (provider/model/content)
     - 실패 → LLMError (kind/status/message/provider) — 호출자가 사용자에게 사유 노출 가능
@@ -23,7 +24,7 @@ log = logging.getLogger("noahub.ai.llm")
 # 프로바이더별 기본 모델 (ai_model 미지정 시)
 _DEFAULT_MODELS = {
     "mistral": "mistral-large-latest",
-    "anthropic": "claude-3-5-sonnet-20240620",
+    "anthropic": "claude-sonnet-5-5",  # 기존 claude-3-5-sonnet-20240620 은 2025-10-28 종료
     "huggingface": "meta-llama/Llama-3-70b-instruct",
     "openai": "gpt-4o-mini",
 }
@@ -151,12 +152,21 @@ def resolve_chain() -> list[str]:
 async def chat(
     prompt: str, *, system: str | None = None, provider: str | None = None,
 ) -> LLMResponse | LLMError:
-    """선택된 프로바이더로 chat completion. 실패 시 LLMError (kind/title/detail/suggestion).
+    """제공사 1곳으로 chat completion (대체 체인 없음). 실패 시 LLMError.
 
-    provider 인자가 주어지면 settings.ai_provider 보다 우선 (fallback 체인 순회용).
+    에이전트 전환 후에는 LangChain 채팅 모델(app/agents/llm.py)로 호출합니다.
+    provider 인자가 주어지면 settings.ai_provider 보다 우선 (스모크 스크립트 호환).
     """
+    from app.agents.llm import chat_once
+
     s = get_settings()
     provider = (provider or s.ai_provider or "").lower()
+    return await chat_once(provider, prompt, system=system)
+
+
+def not_configured_error(provider: str) -> LLMError | None:
+    """호출 전에 알 수 있는 설정 오류. 없으면 None."""
+    s = get_settings()
     if provider in ("", "fallback"):
         return LLMError(
             kind="not_configured", provider="fallback",
@@ -164,8 +174,14 @@ async def chat(
             detail="AI_PROVIDER 가 'fallback' 으로 설정되어 LLM 호출을 건너뜁니다.",
             suggestion="LLM 분석을 쓰려면 backend/.env 에서 AI_PROVIDER 를 mistral/anthropic/openai/huggingface 중 하나로 바꾸고 해당 키를 채우세요.",
         )
-    key = _get_key(provider)
-    if not key:
+    if provider not in _DEFAULT_MODELS:
+        return LLMError(
+            kind="not_configured", provider=provider,
+            title="알 수 없는 프로바이더",
+            detail=f"AI_PROVIDER={provider} 는 지원되지 않는 값입니다.",
+            suggestion="mistral / anthropic / openai / huggingface / fallback 중 하나로 설정하세요.",
+        )
+    if not _get_key(provider):
         log.warning("AI_PROVIDER=%s 인데 해당 키가 비어있음 → fallback", provider)
         return LLMError(
             kind="not_configured", provider=provider,
@@ -173,53 +189,67 @@ async def chat(
             detail=f"AI_PROVIDER={provider} 인데 {provider.upper()}_API_KEY 환경변수가 비어있습니다.",
             suggestion=f"backend/.env 에 {provider.upper()}_API_KEY 를 설정한 뒤 컨테이너를 재기동하세요.",
         )
-    model = s.ai_model or _DEFAULT_MODELS.get(provider)
-    if not model:
+    if not (s.ai_model or _DEFAULT_MODELS.get(provider)):
         return LLMError(
             kind="not_configured", provider=provider,
             title="모델 미지정",
             detail=f"AI_MODEL 환경변수가 비어있고 {provider} 의 기본 모델이 정의되지 않았습니다.",
             suggestion=f"backend/.env 의 AI_MODEL 에 {provider} 가 지원하는 모델명을 직접 지정하세요.",
         )
+    return None
+
+
+class EmptyResponseError(Exception):
+    """HTTP 200 인데 모델이 빈 답을 준 경우 — 대체 체인의 다음 제공사로 넘기기 위한 예외."""
+
+
+def empty_response_error(provider: str, model: str | None) -> LLMError:
+    return LLMError(
+        kind="empty_response", provider=provider,
+        title="모델이 빈 답변을 반환",
+        detail=f"{provider}/{model} 호출은 성공했지만 응답 본문이 비어있습니다.",
+        suggestion="질문을 더 구체적으로 다시 작성하거나, AI_MODEL 을 다른 모델로 바꿔 재시도하세요.",
+    )
+
+
+def _status_of(exc: BaseException) -> int | None:
+    for obj in (exc, getattr(exc, "response", None)):
+        code = getattr(obj, "status_code", None) if obj is not None else None
+        if isinstance(code, int):
+            return code
+    return None
+
+
+def _body_of(exc: BaseException) -> str | None:
+    resp = getattr(exc, "response", None)
     try:
-        async with httpx.AsyncClient(timeout=60.0) as client:
-            if provider == "mistral":
-                content = await _mistral(client, key, model, prompt, system, s.ai_max_tokens)
-            elif provider == "anthropic":
-                content = await _anthropic(client, key, model, prompt, system, s.ai_max_tokens)
-            elif provider == "huggingface":
-                content = await _huggingface(client, key, model, prompt, system, s.ai_max_tokens)
-            elif provider == "openai":
-                content = await _openai(client, key, model, prompt, system, s.ai_max_tokens)
-            else:
-                return LLMError(
-                    kind="not_configured", provider=provider,
-                    title="알 수 없는 프로바이더",
-                    detail=f"AI_PROVIDER={provider} 는 지원되지 않는 값입니다.",
-                    suggestion="mistral / anthropic / openai / huggingface / fallback 중 하나로 설정하세요.",
-                )
-        # 빈 응답 검출 — HTTP 200 인데 모델이 빈 답을 준 경우 (드물지만 발생)
-        cleaned = (content or "").strip()
-        if not cleaned:
-            return LLMError(
-                kind="empty_response", provider=provider,
-                title="모델이 빈 답변을 반환",
-                detail=f"{provider}/{model} 호출은 성공했지만 응답 본문이 비어있습니다.",
-                suggestion="질문을 더 구체적으로 다시 작성하거나, AI_MODEL 을 다른 모델로 바꿔 재시도하세요.",
-            )
-        return LLMResponse(provider=provider, model=model, content=cleaned)
-    except httpx.HTTPStatusError as e:
-        # 프로바이더가 4xx/5xx 응답 — 401 invalid key, 429 rate limit, 5xx outage
-        status = e.response.status_code
-        body = _excerpt(e.response.text)
+        text = resp.text if resp is not None else None
+    except Exception:  # noqa: BLE001 — 스트리밍 응답 등
+        text = None
+    if not text:
+        body = getattr(exc, "body", None)
+        text = str(body) if body else None
+    return _excerpt(text)
+
+
+def error_from_exception(exc: BaseException, provider: str, model: str | None = None) -> LLMError:
+    """LangChain 제공사 SDK 예외 → 기존 LLMError (kind/title/detail/suggestion).
+
+    openai / anthropic SDK 는 status_code 속성, mistral 은 httpx.HTTPStatusError 를 던짐.
+    """
+    if isinstance(exc, EmptyResponseError):
+        return empty_response_error(provider, model)
+    status = _status_of(exc)
+    name = type(exc).__name__
+    if status is not None:
+        body = _body_of(exc)
         log.warning("LLM HTTP %s (provider=%s): %s", status, provider, body)
         kind, title, detail, suggestion = _classify_http_error(provider, status)
         return LLMError(
             kind=kind, provider=provider, status=status,
-            title=title, detail=detail, suggestion=suggestion,
-            body_excerpt=body,
+            title=title, detail=detail, suggestion=suggestion, body_excerpt=body,
         )
-    except httpx.TimeoutException:
+    if isinstance(exc, httpx.TimeoutException) or "Timeout" in name:
         log.warning("LLM timeout (provider=%s, 60s 초과)", provider)
         return LLMError(
             kind="timeout", provider=provider,
@@ -227,7 +257,7 @@ async def chat(
             detail=f"{provider} API 가 60초 안에 응답을 보내지 않았습니다.",
             suggestion="잠시 후 다시 시도하거나, 더 가벼운 모델로 AI_MODEL 을 바꾸세요. 컨텍스트가 너무 길 수도 있습니다.",
         )
-    except httpx.ConnectError:
+    if isinstance(exc, httpx.ConnectError) or "Connection" in name or "Connect" in name:
         log.warning("LLM connect error (provider=%s)", provider)
         return LLMError(
             kind="network", provider=provider,
@@ -235,30 +265,29 @@ async def chat(
             detail=f"{provider} API 호스트에 연결조차 되지 않았습니다 (DNS 또는 TCP 실패).",
             suggestion="인터넷 연결, 사내 방화벽/프록시 설정, DNS 확인. 평가관 PC 가 외부망 차단된 상태일 수 있습니다.",
         )
-    except httpx.HTTPError as e:
-        log.warning("LLM transport error (provider=%s): %s", provider, e)
+    if isinstance(exc, httpx.HTTPError):
+        log.warning("LLM transport error (provider=%s): %s", provider, exc)
         return LLMError(
             kind="network", provider=provider,
             title="네트워크 전송 오류",
-            detail=f"{type(e).__name__}: {str(e)[:120]}",
+            detail=f"{name}: {str(exc)[:120]}",
             suggestion="네트워크가 불안정하거나 프로바이더 측 TLS 가 일시적으로 닫혔을 수 있습니다. 재시도하세요.",
         )
-    except (KeyError, ValueError, TypeError) as e:
-        log.exception("LLM parse error (provider=%s): %s", provider, e)
+    if isinstance(exc, KeyError | ValueError | TypeError):
+        log.warning("LLM parse error (provider=%s): %s", provider, exc)
         return LLMError(
             kind="parse_error", provider=provider,
             title="응답 형식 오류",
-            detail=f"{provider} 응답 JSON 이 예상한 스키마와 다릅니다 ({type(e).__name__}).",
-            suggestion="프로바이더가 API 스펙을 변경했을 수 있습니다. backend/app/services/ai/llm.py 의 파서 확인 필요.",
+            detail=f"{provider} 응답 JSON 이 예상한 스키마와 다릅니다 ({name}).",
+            suggestion="프로바이더가 API 스펙을 변경했을 수 있습니다. backend/app/agents/llm.py 의 제공사 설정 확인 필요.",
         )
-    except Exception as e:  # noqa: BLE001
-        log.exception("LLM unknown error (provider=%s)", provider)
-        return LLMError(
-            kind="unknown", provider=provider,
-            title="분류되지 않은 오류",
-            detail=f"{type(e).__name__}: {str(e)[:120]}",
-            suggestion="backend 컨테이너 로그 (docker compose logs backend) 에서 전체 스택 트레이스를 확인하세요.",
-        )
+    log.warning("LLM unknown error (provider=%s): %s", provider, name)
+    return LLMError(
+        kind="unknown", provider=provider,
+        title="분류되지 않은 오류",
+        detail=f"{name}: {str(exc)[:120]}",
+        suggestion="backend 컨테이너 로그 (docker compose logs backend) 에서 전체 스택 트레이스를 확인하세요.",
+    )
 
 
 def _classify_http_error(provider: str, status: int) -> tuple[str, str, str, str]:
@@ -311,76 +340,3 @@ def _classify_http_error(provider: str, status: int) -> tuple[str, str, str, str
         f"{provider} 가 HTTP {status} 를 반환했습니다.",
         "응답 본문을 확인하고 프로바이더 문서를 참고하세요.",
     )
-
-
-# ---------- 프로바이더 구현 -------------------------------------------------
-
-async def _mistral(client, key, model, prompt, system, max_tokens):
-    msgs = []
-    if system:
-        msgs.append({"role": "system", "content": system})
-    msgs.append({"role": "user", "content": prompt})
-    r = await client.post(
-        "https://api.mistral.ai/v1/chat/completions",
-        headers={"Authorization": f"Bearer {key}", "Content-Type": "application/json"},
-        json={"model": model, "messages": msgs, "max_tokens": max_tokens},
-    )
-    r.raise_for_status()
-    return r.json()["choices"][0]["message"]["content"]
-
-
-async def _anthropic(client, key, model, prompt, system, max_tokens):
-    payload = {
-        "model": model,
-        "max_tokens": max_tokens,
-        "messages": [{"role": "user", "content": prompt}],
-    }
-    if system:
-        payload["system"] = system
-    r = await client.post(
-        "https://api.anthropic.com/v1/messages",
-        headers={
-            "x-api-key": key,
-            "anthropic-version": "2023-06-01",
-            "Content-Type": "application/json",
-        },
-        json=payload,
-    )
-    r.raise_for_status()
-    data = r.json()
-    # Anthropic 응답 구조: content: [{type:"text", text:"..."}]
-    parts = [b.get("text", "") for b in data.get("content", []) if b.get("type") == "text"]
-    return "\n".join(parts)
-
-
-async def _huggingface(client, key, model, prompt, system, max_tokens):
-    full_prompt = f"{system}\n\n{prompt}" if system else prompt
-    r = await client.post(
-        f"https://api-inference.huggingface.co/models/{model}",
-        headers={"Authorization": f"Bearer {key}", "Content-Type": "application/json"},
-        json={
-            "inputs": full_prompt,
-            "parameters": {"max_new_tokens": max_tokens, "return_full_text": False},
-        },
-    )
-    r.raise_for_status()
-    data = r.json()
-    if isinstance(data, list) and data:
-        return data[0].get("generated_text", "")
-    if isinstance(data, dict):
-        return data.get("generated_text", str(data))
-    return str(data)
-
-
-async def _openai(client, key, model, prompt, system, max_tokens):
-    msgs = []
-    if system:
-        msgs.append({"role": "system", "content": system})
-    msgs.append({"role": "user", "content": prompt})
-    r = await client.post(
-        "https://api.openai.com/v1/chat/completions",
-        headers={"Authorization": f"Bearer {key}", "Content-Type": "application/json"},
-        json={"model": model, "messages": msgs, "max_tokens": max_tokens},
-    )
-    r.raise_for_status()
-    return r.json()["choices"][0]["message"]["content"]
