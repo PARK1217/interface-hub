@@ -92,9 +92,39 @@ RCA(신규) 응답 시간: 860~1,180ms (도구 6개 — SLA 30일 집계와 Isol
 **전환 전 검색 코드를 같은 데이터에 돌려도 0.052** 로 같아(커밋 `e471d66` 의 `_retrieve` 를 직접 실행) 데이터 의존적인 기존 스크립트의 흔들림으로 판단했습니다.
 같은 의미의 검증은 고정 데이터를 쓰는 `tests/test_agent_flow.py::test_case_agent_and_no_match` 가 통과합니다.
 
-## 7. 전환하며 함께 고친 기존 문제
+## 7. 총괄 검토 반영 (2026-11-27)
+
+| 항목 | 바꾼 것 |
+|---|---|
+| 필수 1 | `ROUTER_LLM_FALLBACK` 기본값 **0(끔)** — 기본은 전환 전과 같은 분류. 켜면 라우터 LLM 분류 전체에 `ROUTER_LLM_TIMEOUT_SECONDS`(8초) 제한, 넘으면 규칙 결과 |
+| 필수 2 | 마이그레이션에 `SET LOCAL lock_timeout = '5s'`, 끝난 뒤 필수 컬럼(`ai_query_logs.run_id`) 확인 → 없으면 error 로그 + **기동 실패** (Jenkins 헬스체크가 /docs 만 봐서 AI 질의 500 을 못 잡는 문제 방지) |
+| 필수 3 | 연결된 인터페이스가 없는 장애의 원인 분석 → 500 대신 되묻기 |
+| 권장 4 | `/api/ai/rca` 는 OPERATOR·ADMIN 만 (VIEWER 403), 장애 화면 버튼도 같은 권한에서만 보임 |
+| 권장 5 | 설정에 `env_ignore_empty=True` — `.env.example` 의 빈 값(`AGENT_MAX_STEPS=` 등)은 기본값으로 |
+| 권장 6 | PG 도구 세션은 `SET TRANSACTION READ ONLY` (DB 수준 쓰기 차단) |
+| 권장 7 | 코드 docstring 의 로컬 PC 경로 제거 |
+
+확인: pytest **53 passed** (라우터 기본 꺼짐·시간 초과, run_id 없으면 기동 실패, 인터페이스 없는 장애 → 되묻기, VIEWER 403, 빈 환경 변수 포함) · ruff 통과 · type-check · build 통과.
+임시 Postgres 15 에서 실제 확인: 기동 2회 정상(IF NOT EXISTS), 도구 세션 INSERT → `ReadOnlySqlTransaction` 으로 차단, PG 전용 SQL 도구(`retry_effects`)는 READ ONLY 안에서 정상, `run_id` 를 지우면 기동 실패.
+
+## 8. 전환하며 함께 고친 기존 문제
 
 - `database.py` 데모 마이그레이션: 모든 ALTER 가 한 트랜잭션이라 마지막 `INSERT alert_rules` 실패가 그 뒤에 더한 줄을 모두 무시하게 만들었음 → 문장별 SAVEPOINT
 - `database.py` PG 전용 `connect_args` 를 PG 일 때만 (sqlite 테스트)
 - Anthropic 기본 모델 `claude-3-5-sonnet-20240620`(2025-10-28 종료) → `claude-sonnet-5-5`
 - CI: YAML 오류, ruff 154개, 37바이트 SECRET_KEY
+
+## 배포 직후 확인
+
+운영 배포(Jenkins: main push → OCI 서버 `git pull` + `docker compose up -d --build backend frontend`) 뒤 아래를 확인합니다.
+Jenkins 헬스체크는 `/docs` 응답만 보므로 이 항목들은 따로 봐야 합니다.
+
+1. **`ai_query_logs.run_id` 컬럼** — `docker compose exec postgres psql -U noahub -d noahub -c "\d ai_query_logs"` 에 `run_id` 가 있는지.
+   없으면 백엔드가 기동을 멈춥니다(`필수 컬럼 없음` 오류 로그) — 정상입니다. 원인(잠금 대기 5초 초과 등)을 고친 뒤 재기동.
+2. **기동 로그에 `데모 마이그레이션 스킵` 이 새로 없는지** — `docker compose logs backend | grep 스킵`.
+   `INSERT INTO alert_rules` 스킵 1줄은 전환 전부터 있던 것(무해).
+3. **운영 프런트가 `Dockerfile.prod` 로 빌드되는지** — dev compose(`node_modules` 익명 볼륨)로 돌면 새 패키지 mermaid 가 없어 `/agent-runs` 그림이 안 뜰 수 있습니다. 그 경우 `docker compose up -d --build -V frontend`.
+4. **WebSocket `/ws` 연결** — websockets 14.1 → 15.0.1 로 올렸으므로 대시보드 LIVE 표시가 초록인지.
+5. **첫 GitHub Actions 결과** — CI 는 이번에 처음 실제로 돕니다 (ruff · pytest 53개 · type-check · build · Docker 빌드).
+6. **AI 분석 한 번 + 장애 화면 "원인 분석" 한 번** → `/agent-runs` 에 2건이 보이는지.
+7. **LLM 라우터는 기본 꺼짐** (`ROUTER_LLM_FALLBACK=0`, 전환 전과 같은 분류). 켜려면 서버 `.env` 에 `ROUTER_LLM_FALLBACK=1` (제한 시간 `ROUTER_LLM_TIMEOUT_SECONDS`, 기본 8초).

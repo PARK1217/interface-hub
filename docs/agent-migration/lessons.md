@@ -17,6 +17,9 @@ Interface Hub 를 "기능별 에이전트 + 실행 플로우"(LangGraph + LangCh
 11. **실행 기록은 요청 끝에 한 트랜잭션.** 시작 시 INSERT + 단계마다 flush 는 요청당 +27ms 였고, 끝에 `agent_runs` + `agent_steps` + 기존 로그를 같은 연결에서 한 번에 쓰니 +18ms 로 줄었습니다.
 12. **sqlite 메모리 DB 픽스처 + PG 전용 함수만 바꿔 끼우기.** `StaticPool` 엔진으로 `create_all` 하고, `date_part` · `NULLS LAST` 를 쓰는 기존 함수는 도구 모듈 속성으로 참조해 테스트에서 바꿔 끼웠습니다. CI 는 네트워크·Redis 없이 그래프 전체를 돕니다.
 
+13. **새 동작은 기본 꺼짐으로.** 총괄 검토에서 LLM 라우터 기본값이 켜짐이라 운영 `.env` 에 값이 없으면 동작이 바뀌는 문제가 지적됐습니다. "끄면 전환 전과 같음"인 플래그는 **기본값을 끔**으로 두고, 켤 때 쓰는 LLM 호출에는 짧은 전체 제한 시간을 거세요.
+14. **배포 헬스체크가 못 잡는 실패를 기동 단계에서 막기.** 새 컬럼 ALTER 가 실패해도 경고만 남으면 `/docs` 헬스체크는 통과하고 AI 질의만 500 이 됩니다. 마이그레이션 뒤 필수 컬럼을 확인해 없으면 기동을 멈추게 했습니다.
+
 ## 2. 막힌 점
 
 1. **의존성 충돌: `langchain-core` 1.x → `langsmith` → `websockets>=15`.** 기존 `websockets==14.1` 고정과 충돌. uvicorn 0.34 가 쓰는 `websockets.legacy` 가 15.0.1 에 있는지 확인하고 올렸습니다. `pip install --dry-run -r requirements.txt` 를 먼저 돌리세요 (전체 해석은 몇 분 걸림).

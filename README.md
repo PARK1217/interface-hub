@@ -47,7 +47,7 @@ flowchart LR
 
 | 에이전트 | 하는 일 | 쓰는 도구 | 끝내는 기준 | 모델 |
 |---|---|---|---|---|
-| 안내 에이전트 | 장애 화면 진입이면 원인 분석, 아니면 기존 키워드 점수로 분류. 점수 0 이거나 1·2위 동점일 때만 LLM 분류 1회 | - | 경로 1개 결정 (LLM 실패 시 규칙 결과) | fast |
+| 안내 에이전트 | 장애 화면 진입이면 원인 분석, 아니면 기존 키워드 점수로 분류. `ROUTER_LLM_FALLBACK=1` 이면 점수 0 이거나 1·2위 동점일 때만 LLM 분류 1회 (기본 꺼짐) | - | 경로 1개 결정 (LLM 실패·시간 초과 시 규칙 결과) | fast |
 | 통계 분석 | 최근 7일 운영 통계 표만 근거로 답함 | `get_ops_stats` | 수치 인용 답 / "제공된 통계로는 답할 수 없음" | balanced |
 | 설정 점검 | 등록된 인터페이스 메타 표만 근거로 답함 (시크릿 값 없음) | `get_interface_config` | 표의 사실로 답 / "등록된 정보 내에 없음" | fast |
 | 장애 사례 검색 | 해결된 과거 장애 Top-K 로 원인 가설·조치, `[#ID]` 인용 | `search_similar_cases` (TF-IDF `BaseRetriever`) | 유사도 < 0.05 면 LLM 없이 "찾지 못했습니다" | balanced |
@@ -66,7 +66,7 @@ flowchart LR
 
 ## 실행 기록 (백오피스)
 
-요청 한 건마다 어떤 에이전트가 어떤 순서로 일했는지, 단계별 입력·결과·모델·토큰·비용을 백오피스 `/agent-runs` (메뉴 "에이전트 실행 기록", ADMIN·VIEWER)에서 볼 수 있습니다. 장애 화면의 원인 분석 결과에서도 바로 이동합니다.
+요청 한 건마다 어떤 에이전트가 어떤 순서로 일했는지, 단계별 입력·결과·모델·토큰·비용을 백오피스 `/agent-runs` (메뉴 "에이전트 실행 기록", ADMIN·VIEWER)에서 볼 수 있습니다. 장애 화면의 원인 분석 결과에서도 바로 이동합니다. (장애 화면 "원인 분석"은 캐시 없이 top 모델을 쓰므로 OPERATOR·ADMIN 만 실행)
 
 ![실행 흐름 화면](docs/screenshots/agent-trace.jpg)
 
@@ -107,10 +107,26 @@ docker compose exec backend python eval/run_agent_eval.py --phase after
 |---|---|
 | `AI_PROVIDER` / `AI_FALLBACK_CHAIN` | 모델 제공사와 대체 순서 (기존 변수 그대로) |
 | `AGENT_MODEL_FAST` / `AGENT_MODEL_BALANCED` / `AGENT_MODEL_TOP` | 수준별 모델 ("제공사:모델" 목록, 비우면 `AI_MODEL`) |
-| `ROUTER_LLM_FALLBACK` | 1: 규칙이 애매하면 LLM 분류 / 0: 규칙만 |
+| `ROUTER_LLM_FALLBACK` | 1: 규칙이 애매하면 LLM 분류 / 0: 규칙만 (기본 0 = 전환 전과 같음) |
+| `ROUTER_LLM_TIMEOUT_SECONDS` | 라우터 LLM 분류 제한 시간 (기본 8초, 넘으면 규칙 결과) |
 | `AGENT_MAX_STEPS` / `AGENT_RECURSION_LIMIT` | 에이전트 단계 한도 / 그래프 전체 한도 |
 | `AGENT_TRACE_ENABLED` | 실행 기록 켜기 |
 | `USD_KRW_RATE` | 비용 계산 환율 (비우면 비용 NULL) |
+
+## 배포 직후 확인
+
+운영 배포(Jenkins: main push → OCI 서버 `git pull` + `docker compose up -d --build backend frontend`) 뒤 아래를 확인합니다.
+Jenkins 헬스체크는 `/docs` 응답만 보므로 이 항목들은 따로 봐야 합니다.
+
+1. **`ai_query_logs.run_id` 컬럼** — `docker compose exec postgres psql -U noahub -d noahub -c "\d ai_query_logs"` 에 `run_id` 가 있는지.
+   없으면 백엔드가 기동을 멈춥니다(`필수 컬럼 없음` 오류 로그) — 정상입니다. 원인(잠금 대기 5초 초과 등)을 고친 뒤 재기동.
+2. **기동 로그에 `데모 마이그레이션 스킵` 이 새로 없는지** — `docker compose logs backend | grep 스킵`.
+   `INSERT INTO alert_rules` 스킵 1줄은 전환 전부터 있던 것(무해).
+3. **운영 프런트가 `Dockerfile.prod` 로 빌드되는지** — dev compose(`node_modules` 익명 볼륨)로 돌면 새 패키지 mermaid 가 없어 `/agent-runs` 그림이 안 뜰 수 있습니다. 그 경우 `docker compose up -d --build -V frontend`.
+4. **WebSocket `/ws` 연결** — websockets 14.1 → 15.0.1 로 올렸으므로 대시보드 LIVE 표시가 초록인지.
+5. **첫 GitHub Actions 결과** — CI 는 이번에 처음 실제로 돕니다 (ruff · pytest 53개 · type-check · build · Docker 빌드).
+6. **AI 분석 한 번 + 장애 화면 "원인 분석" 한 번** → `/agent-runs` 에 2건이 보이는지.
+7. **LLM 라우터는 기본 꺼짐** (`ROUTER_LLM_FALLBACK=0`, 전환 전과 같은 분류). 켜려면 서버 `.env` 에 `ROUTER_LLM_FALLBACK=1` (제한 시간 `ROUTER_LLM_TIMEOUT_SECONDS`, 기본 8초).
 
 ## 5종 프로토콜 어댑터
 
