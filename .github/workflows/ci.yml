@@ -28,7 +28,7 @@ jobs:
       - name: Test
         env:
           SECRET_KEY: ZGV2LW9ubHktcmVwbGFjZS1pbi1wcm9kdWN0aW9uLTAwMDAwMA==
-          DATABASE_URL: sqlite+pysqlite:///:memory:
+          DATABASE_URL: "sqlite+pysqlite:///:memory:"
         run: pytest -q tests/test_security.py tests/test_detector.py
 
   frontend:

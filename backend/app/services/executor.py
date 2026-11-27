@@ -399,7 +399,7 @@ async def execute_interface(
     *,
     triggered_by: str = "manual",
     parent_log: CallLog | None = None,
-    actor: "User | None" = None,  # noqa: F821 — 순환 임포트 회피
+    actor: User | None = None,  # noqa: F821 — 순환 임포트 회피
 ) -> CallLog:
     """인터페이스 1회 실행 → CallLog 저장 → broadcast/detect.
 

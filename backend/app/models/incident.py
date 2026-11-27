@@ -40,4 +40,4 @@ class Incident(Base):
     )
     resolved_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), default=None)
 
-    interface: Mapped["Interface"] = relationship(back_populates="incidents", lazy="noload")  # noqa: F821
+    interface: Mapped[Interface] = relationship(back_populates="incidents", lazy="noload")  # noqa: F821

@@ -19,7 +19,6 @@ from app.models import CallLog, Incident, Interface
 from app.models.call_log import CallStatus
 from app.models.incident import IncidentType
 
-
 # detector._STATUS_TO_INCIDENT 의 역매핑 — incident 유형별로 어떤
 # CallStatus 가 "관련" 으로 묶이는지.
 _INCIDENT_TO_STATUSES: dict[IncidentType, list[CallStatus]] = {

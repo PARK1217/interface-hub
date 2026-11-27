@@ -24,4 +24,4 @@ class SlaTarget(Base):
         DateTime(timezone=True), server_default=func.now(), onupdate=func.now()
     )
 
-    interface: Mapped["Interface"] = relationship(back_populates="sla_target", lazy="noload")  # noqa: F821
+    interface: Mapped[Interface] = relationship(back_populates="sla_target", lazy="noload")  # noqa: F821

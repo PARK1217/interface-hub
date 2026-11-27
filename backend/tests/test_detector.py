@@ -1,6 +1,6 @@
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 
-from app.models import CallLog, Interface
+from app.models import CallLog
 from app.models.call_log import CallStatus
 
 
@@ -10,15 +10,15 @@ def _mk_call(status=CallStatus.SUCCESS, duration_ms=100):
         status=status,
         http_status=200 if status == CallStatus.SUCCESS else 500,
         duration_ms=duration_ms,
-        called_at=datetime.now(timezone.utc),
+        called_at=datetime.now(UTC),
         triggered_by="manual",
     )
 
 
 def test_classify_status():
-    from app.services.executor import _classify
-
     import httpx
+
+    from app.services.executor import _classify
 
     assert _classify(200, None) == CallStatus.SUCCESS
     assert _classify(401, None) == CallStatus.AUTH_ERROR

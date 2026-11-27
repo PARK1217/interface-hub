@@ -2,13 +2,12 @@ from __future__ import annotations
 
 from datetime import datetime, timedelta
 
-import asyncio
-
-from fastapi import APIRouter, Depends, Header, HTTPException, Query, Request, status as http_status
-from sqlalchemy import and_, func, select
+from fastapi import APIRouter, Depends, Header, HTTPException, Query, Request
+from fastapi import status as http_status
+from sqlalchemy import and_, select
 from sqlalchemy.orm import Session
 
-from app.api.deps import get_current_user, get_db, get_optional_user, require_role
+from app.api.deps import get_db, get_optional_user, require_role
 from app.core.config import get_settings
 from app.core.time import now_kst
 from app.core.websocket import ws_manager

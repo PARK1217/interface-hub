@@ -7,7 +7,7 @@ from pydantic import BaseModel
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from app.api.deps import get_current_user, get_db, require_role
+from app.api.deps import get_db, require_role
 from app.core.time import now_kst
 from app.models import CallLog, Incident, Interface, User, UserRole
 from app.models.call_log import CallStatus

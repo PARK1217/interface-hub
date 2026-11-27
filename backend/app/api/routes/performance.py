@@ -12,7 +12,6 @@ from sqlalchemy.orm import Session
 from app.api.deps import get_db
 from app.core.time import now_kst
 from app.models import CallLog, Interface
-from app.models.call_log import CallStatus
 
 router = APIRouter(prefix="/performance", tags=["performance"])
 

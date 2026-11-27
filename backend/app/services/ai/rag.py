@@ -17,14 +17,20 @@ from sqlalchemy import desc, select
 from sqlalchemy.orm import Session
 
 from app.core.time import now_kst
-
 from app.models import AiQueryLog, Incident, User
 from app.models.incident import IncidentType
 from app.services.ai import cache as ai_cache
 from app.services.ai.context import build_config_context, build_stats_context
 from app.services.ai.intent import Intent, classify_intent
-from app.services.ai.llm import LLMError, LLMResponse, chat as llm_chat
-from app.services.ai.llm import current_model, current_provider, is_configured, resolve_chain
+from app.services.ai.llm import (
+    LLMError,
+    LLMResponse,
+    current_model,
+    current_provider,
+    is_configured,
+    resolve_chain,
+)
+from app.services.ai.llm import chat as llm_chat
 
 log = logging.getLogger("noahub.ai.rag")
 

@@ -3,7 +3,7 @@ from __future__ import annotations
 import random
 from datetime import timedelta
 
-from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi import APIRouter, Depends, Query
 from pydantic import BaseModel
 from sqlalchemy import desc, func, select
 from sqlalchemy.orm import Session
@@ -320,7 +320,7 @@ def suggestions(
     # 가 날 것이라 제외. popular / incident_recent 는 대부분 임계 통과, interface_template
     # 중 일부만 걸러짐.
     scores = score_questions(db, [c.text for c in candidates])
-    valid = [c for c, s in zip(candidates, scores) if s >= NO_MATCH_THRESHOLD]
+    valid = [c for c, s in zip(candidates, scores, strict=False) if s >= NO_MATCH_THRESHOLD]
 
     # 5) 다양성 보장 — 비슷한 prompt (같은 인터페이스 / 비슷한 텍스트) 중복 제거 + source 라운드로빈.
     # 같은 인터페이스 incident 가 여러 개거나 popular 에 비슷한 질문이 몰려있으면

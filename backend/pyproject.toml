@@ -9,3 +9,15 @@ ignore = ["E501"]
 [tool.pytest.ini_options]
 asyncio_mode = "auto"
 pythonpath = ["."]
+
+[tool.ruff.lint.per-file-ignores]
+# 시드 데이터의 가짜 트레이스 문자열은 % 포맷 그대로 둠
+"app/scripts/seed_demo.py" = ["UP031"]
+
+[tool.ruff.lint.flake8-bugbear]
+# FastAPI 의존성 주입 기본값(Depends/Query 등)은 B008 대상이 아님
+extend-immutable-calls = [
+    "fastapi.Depends", "fastapi.Query", "fastapi.Header", "fastapi.Body",
+    "fastapi.Path", "fastapi.File", "fastapi.Form", "fastapi.Security",
+    "app.api.deps.require_role",
+]
