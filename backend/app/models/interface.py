@@ -140,12 +140,12 @@ class Interface(Base):
         DateTime(timezone=True), default=None, index=True
     )
 
-    call_logs: Mapped[list["CallLog"]] = relationship(  # noqa: F821
+    call_logs: Mapped[list[CallLog]] = relationship(  # noqa: F821
         back_populates="interface", cascade="all, delete-orphan", lazy="noload"
     )
-    incidents: Mapped[list["Incident"]] = relationship(  # noqa: F821
+    incidents: Mapped[list[Incident]] = relationship(  # noqa: F821
         back_populates="interface", cascade="all, delete-orphan", lazy="noload"
     )
-    sla_target: Mapped["SlaTarget | None"] = relationship(  # noqa: F821
+    sla_target: Mapped[SlaTarget | None] = relationship(  # noqa: F821
         back_populates="interface", uselist=False, cascade="all, delete-orphan", lazy="noload"
     )

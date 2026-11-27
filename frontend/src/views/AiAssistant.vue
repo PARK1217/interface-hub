@@ -574,6 +574,7 @@ function intentLabel(intent: string): string {
     case 'stats_query': return '운영 통계 분석';
     case 'case_lookup': return '과거 사례 검색';
     case 'config_query': return '설정 정보 조회';
+    case 'root_cause': return '장애 원인 분석';
     default: return '일반 질의';
   }
 }
@@ -582,6 +583,7 @@ function intentIcon(intent: string): string {
     case 'stats_query': return 'mdi-chart-bar';
     case 'case_lookup': return 'mdi-book-search-outline';
     case 'config_query': return 'mdi-cog-outline';
+    case 'root_cause': return 'mdi-stethoscope';
     default: return 'mdi-robot-outline';
   }
 }
@@ -590,6 +592,7 @@ function intentColor(intent: string): string {
     case 'stats_query': return 'deep-purple';
     case 'case_lookup': return 'teal';
     case 'config_query': return 'blue-grey';
+    case 'root_cause': return 'deep-orange';
     default: return 'grey';
   }
 }
@@ -601,6 +604,8 @@ function intentTooltip(intent: string): string {
       return '과거 사례 검색 질문 — resolved incident 텍스트 매칭';
     case 'config_query':
       return '설정 정보 질문 — 등록된 인터페이스 메타 정보를 LLM 컨텍스트로 사용';
+    case 'root_cause':
+      return '장애 원인 분석 — 최근 호출 로그·재시도·SLA·이상 점수·과거 사례를 근거로 가설 제안 (실행은 하지 않음)';
     default:
       return '일반 질의';
   }

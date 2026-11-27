@@ -269,7 +269,23 @@ export const AI = {
   myHistory: (limit = 20, include_failed = false) =>
     api.get<AiHistoryItem[]>('/ai/my-history', { params: { limit, include_failed } }),
   suggestions: (limit = 4) => api.get<AiSuggestion[]>('/ai/suggestions', { params: { limit } }),
+  // 장애 원인 분석 에이전트 (읽기 전용 — 재처리·해결 처리는 하지 않음)
+  rca: (incidentId: number) =>
+    api.post<AiAnswer>('/ai/rca', { incident_id: incidentId }, { timeout: AI_ASK_TIMEOUT_MS }),
 };
+
+export interface AiAnswer {
+  answer: string;
+  mode: string;
+  provider: string | null;
+  model: string | null;
+  intent: string;
+  outcome: string;
+  route: string | null;
+  run_id: string | null;
+  similar_cases: { incident_id: number; score: number; content: string; type: string }[];
+  llm_error: { title: string; detail: string; suggestion: string } | null;
+}
 
 export interface PercentileRow {
   interface_id: number;
@@ -419,4 +435,72 @@ export const AuditLogs = {
     const qs = q.toString();
     return `/api/audit-logs/export.xlsx${qs ? '?' + qs : ''}`;
   },
+};
+
+// ---------------------------------------------------------------------------
+// 에이전트 실행 기록 (백오피스, ADMIN·VIEWER)
+// ---------------------------------------------------------------------------
+export interface AgentRunItem {
+  run_id: string;
+  started_at: string;
+  finished_at: string | null;
+  entry: string;
+  user_ref: string | null;
+  request_summary: string | null;
+  route: string | null;
+  status: string;
+  outcome: string | null;
+  total_input_tokens: number;
+  total_output_tokens: number;
+  total_cost_krw: string;
+  duration_ms: number | null;
+  llm_calls: number;
+  unpriced_llm_calls: number;
+  error: string | null;
+}
+
+export interface AgentStepItem {
+  step_id: string;
+  parent_step_id: string | null;
+  seq: number;
+  kind: string;
+  name: string;
+  agent_id: string | null;
+  model: string | null;
+  input_summary: string | null;
+  output_summary: string | null;
+  input_tokens: number | null;
+  output_tokens: number | null;
+  cost_krw: string | null;
+  latency_ms: number | null;
+  started_at: string;
+  error: string | null;
+}
+
+export interface AgentUsageRow {
+  agent_id: string | null;
+  model: string | null;
+  calls: number;
+  input_tokens: number;
+  output_tokens: number;
+  cost_krw: string | null;
+  unpriced_calls: number;
+}
+
+export interface AgentUsage {
+  period: string;
+  since: string;
+  runs: number;
+  rows: AgentUsageRow[];
+  total_input_tokens: number;
+  total_output_tokens: number;
+  total_cost_krw: string;
+}
+
+export const AgentRuns = {
+  list: (params: Record<string, unknown> = {}) => api.get<AgentRunItem[]>('/agent-runs', { params }),
+  get: (runId: string) =>
+    api.get<{ run: AgentRunItem; steps: AgentStepItem[]; path: string[] }>(`/agent-runs/${runId}`),
+  usage: (period: 'today' | '7d' | '30d') => api.get<AgentUsage>('/agent-runs/usage', { params: { period } }),
+  graph: () => api.get<{ mermaid: string; labels: Record<string, string> }>('/agent-runs/graph'),
 };

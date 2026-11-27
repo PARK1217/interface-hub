@@ -60,4 +60,4 @@ class CallLog(Base):
         ForeignKey("users.id", ondelete="SET NULL"), default=None, index=True
     )
 
-    interface: Mapped["Interface"] = relationship(back_populates="call_logs", lazy="noload")  # noqa: F821
+    interface: Mapped[Interface] = relationship(back_populates="call_logs", lazy="noload")  # noqa: F821

@@ -22,7 +22,7 @@ from __future__ import annotations
 
 from typing import Literal
 
-Intent = Literal["stats_query", "case_lookup", "config_query", "general"]
+Intent = Literal["stats_query", "case_lookup", "config_query", "general", "root_cause"]
 
 # 카테고리별 키워드 (소문자 매칭). 1점씩 가산.
 # "지금/현재/최근" 등 시간성 단어 + "인터페이스/장애" 같이 나오면 stats 강력 시그널.
@@ -56,6 +56,17 @@ _KEYWORDS: dict[Intent, list[str]] = {
 }
 
 
+def intent_scores(question: str) -> dict[Intent, int]:
+    """카테고리별 키워드 점수 (안내 에이전트가 '애매함' 판단에 씀)."""
+    q = (question or "").lower()
+    scores: dict[Intent, int] = {k: 0 for k in _KEYWORDS}
+    for intent, keywords in _KEYWORDS.items():
+        for kw in keywords:
+            if kw.lower() in q:
+                scores[intent] += 1
+    return scores
+
+
 def classify_intent(question: str) -> Intent:
     """질문 → intent. 키워드 점수 가장 높은 카테고리.
 
@@ -66,13 +77,7 @@ def classify_intent(question: str) -> Intent:
     if not question or not question.strip():
         return "general"
 
-    q = question.lower()
-    scores: dict[Intent, int] = {k: 0 for k in _KEYWORDS}
-    for intent, keywords in _KEYWORDS.items():
-        for kw in keywords:
-            if kw.lower() in q:
-                scores[intent] += 1
-
+    scores = intent_scores(question)
     max_score = max(scores.values())
     if max_score == 0:
         return "general"
@@ -92,4 +97,5 @@ def intent_label(intent: Intent) -> str:
         "case_lookup": "과거 사례 검색",
         "config_query": "설정 정보 조회",
         "general": "일반 질의",
+        "root_cause": "장애 원인 분석",
     }.get(intent, intent)

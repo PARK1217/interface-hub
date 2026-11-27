@@ -10,6 +10,8 @@ log = logging.getLogger("noahub.db")
 
 _settings = get_settings()
 
+_IS_PG = _settings.database_url.startswith("postgresql")
+
 engine = create_engine(
     _settings.database_url,
     pool_pre_ping=True,
@@ -20,7 +22,8 @@ engine = create_engine(
     # → 운영자/감사관이 psql 로 직접 조회해도 KST 로 보이고, API JSON 도
     # +09:00 오프셋이 붙어 나감. docker-compose 의 TZ=Asia/Seoul 환경
     # 변수와 같이 동작.
-    connect_args={"options": "-c timezone=Asia/Seoul"},
+    # (PG 전용 옵션 — sqlite 테스트에서는 넘기지 않음)
+    connect_args={"options": "-c timezone=Asia/Seoul"} if _IS_PG else {},
 )
 
 SessionLocal = sessionmaker(bind=engine, autoflush=False, autocommit=False, expire_on_commit=False)
@@ -44,6 +47,29 @@ def init_db() -> None:
 
     Base.metadata.create_all(bind=engine)
     _apply_demo_migrations()
+    verify_required_columns(engine)
+
+
+# 기동에 꼭 필요한 컬럼 — ORM 모델에는 있는데 DB 에 없으면 해당 기능 전체가 500 이 되므로 기동을 멈춤.
+# (Jenkins 헬스체크는 /docs 만 보므로 경고 로그만으로는 배포 뒤 장애를 못 잡음)
+REQUIRED_COLUMNS: dict[str, tuple[str, ...]] = {
+    "ai_query_logs": ("run_id",),
+}
+
+
+def verify_required_columns(bind) -> None:
+    from sqlalchemy import inspect
+
+    insp = inspect(bind)
+    missing = [
+        f"{table}.{col}"
+        for table, cols in REQUIRED_COLUMNS.items()
+        for col in cols
+        if col not in {c["name"] for c in insp.get_columns(table)}
+    ]
+    if missing:
+        log.error("필수 컬럼 없음: %s — 데모 마이그레이션 '스킵' 경고를 확인하세요", ", ".join(missing))
+        raise RuntimeError(f"DB 스키마에 필수 컬럼이 없습니다: {', '.join(missing)}")
 
 
 # 데모 한정 인라인 마이그레이션. 운영 배포 시 Alembic 으로 교체할 것.
@@ -119,6 +145,9 @@ _DEMO_MIGRATIONS: list[str] = [
     )""",
     # 단일 행 보장 — id=1 로 upsert. 없으면 기본값으로 생성.
     """INSERT INTO alert_rules (id) VALUES (1) ON CONFLICT (id) DO NOTHING""",
+    # 에이전트 실행 기록 연결 (agent_runs 는 create_all 이 먼저 만듦)
+    "ALTER TABLE ai_query_logs ADD COLUMN IF NOT EXISTS run_id UUID REFERENCES agent_runs(run_id) ON DELETE SET NULL",
+    "CREATE INDEX IF NOT EXISTS ix_ai_query_logs_run_id ON ai_query_logs(run_id)",
 ]
 
 
@@ -127,8 +156,13 @@ def _apply_demo_migrations() -> None:
     if engine.dialect.name != "postgresql":
         return
     with engine.begin() as conn:
+        # 운영 중인 테이블에 ALTER 가 잠금을 오래 기다리며 다른 쿼리를 막지 않도록
+        conn.execute(text("SET LOCAL lock_timeout = '5s'"))
         for stmt in _DEMO_MIGRATIONS:
+            # 문장마다 SAVEPOINT — 한 줄이 실패해도 트랜잭션 전체가 aborted 되어
+            # 뒤 문장이 모두 무시되는 일을 막음 (전에는 마지막 INSERT 실패가 뒤에 더한 줄을 막았음)
             try:
-                conn.execute(text(stmt))
+                with conn.begin_nested():
+                    conn.execute(text(stmt))
             except Exception as e:  # noqa: BLE001
                 log.warning("데모 마이그레이션 스킵: %s — %s", stmt, e)

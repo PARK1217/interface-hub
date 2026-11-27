@@ -100,9 +100,17 @@ cfg.get_settings = fake
 L.get_settings = fake
 
 # openai 프로바이더 호출을 가짜 성공으로 monkey-patch
-async def fake_openai(client, key, model, prompt, system, max_tokens):
-    return '가짜 OpenAI 응답 OK'
-L._openai = fake_openai
+# (에이전트 전환 후: 제공사별 LangChain 채팅 모델을 만드는 app.agents.llm.build_chat_model 을 바꿔 끼움.
+#  mistral 은 진짜 ChatMistralAI 로 잘못된 키 → 401)
+import app.agents.llm as A
+from langchain_core.language_models.fake_chat_models import GenericFakeChatModel
+from langchain_core.messages import AIMessage
+_real_build = A.build_chat_model
+def fake_build(provider, model):
+    if provider == 'openai':
+        return GenericFakeChatModel(messages=iter([AIMessage(content='가짜 OpenAI 응답 OK')]))
+    return _real_build(provider, model)
+A.build_chat_model = fake_build
 
 # RagService._call_llm 을 테스트하려면 db 세션 필요하지만 단순 체인만 검증하자
 # rag 없이 llm 내 반복 호출하는 방식으로 시뮬

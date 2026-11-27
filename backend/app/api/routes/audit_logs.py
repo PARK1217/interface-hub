@@ -139,7 +139,7 @@ def export_xlsx(
             r.ip or "",
             r.user_agent or "",
         ])
-    for col_letter, width in zip("ABCDEFGHIJK", [8, 20, 14, 12, 26, 14, 12, 50, 50, 16, 30]):
+    for col_letter, width in zip("ABCDEFGHIJK", [8, 20, 14, 12, 26, 14, 12, 50, 50, 16, 30], strict=False):
         ws.column_dimensions[col_letter].width = width
 
     buf = io.BytesIO()

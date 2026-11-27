@@ -1,0 +1,49 @@
+# ============================================================
+# 모델 단가 (100만 토큰당 USD, 표준 티어 · 배치/캐시 할인 제외)
+# - 각 제공사 "공식 가격 페이지"에서 확인한 값만 적습니다.
+# - 확인하지 못한 모델은 null → 화면에 "단가 확인 필요". 값을 지어내지 않습니다.
+# - 비용(원) = 토큰 × 단가 / 1,000,000 × USD_KRW_RATE(.env). 환율이 비어 있으면 비용도 NULL.
+# ============================================================
+
+checked_at: 2026-11-27
+usd_krw_rate_checked_at: null   # 1차 출처(한국은행 ECOS 등)를 읽지 못해 확인 못함 → .env USD_KRW_RATE 를 채우면 계산됨
+
+models:
+  - provider: mistral
+    model: mistral-small-latest
+    input_per_1m_usd: 0.15
+    output_per_1m_usd: 0.6
+    source_url: https://docs.mistral.ai/inference/pricing
+    note: Mistral Small 4 (26.03) 별칭
+  - provider: mistral
+    model: mistral-large-latest     # 기존 기본 모델
+    input_per_1m_usd: null
+    output_per_1m_usd: null
+    source_url: https://docs.mistral.ai/inference/pricing
+    note: 문서에 이 별칭이 없어 확인 못함 (Large 4 = mistral-large 는 0.7/2.1 이지만 같은 모델인지 확인 못함)
+  - provider: openai
+    model: gpt-4o-mini              # 기존 기본 모델
+    input_per_1m_usd: 0.15
+    output_per_1m_usd: 0.60
+    source_url: https://developers.openai.com/api/docs/pricing
+    note: 스냅샷 gpt-4o-mini-2024-07-18 은 2027-01-14 종료 예정
+  - provider: anthropic
+    model: claude-sonnet-5-5        # 기본 모델 (기존 claude-3-5-sonnet-20240620 은 2025-10-28 종료)
+    input_per_1m_usd: 2
+    output_per_1m_usd: 10
+    source_url: https://platform.claude.com/docs/en/about-claude/pricing
+    note: null
+  - provider: anthropic
+    model: claude-haiku-5-5
+    input_per_1m_usd: 0.10
+    output_per_1m_usd: 0.50
+    source_url: https://platform.claude.com/docs/en/about-claude/pricing
+    note: 프롬프트 100k 토큰 이하 단가 (초과 시 0.50/2.50 — 이 프로젝트 프롬프트는 100k 미만)
+  - provider: huggingface
+    model: meta-llama/Llama-3-70b-instruct   # 기존 기본 모델
+    input_per_1m_usd: null
+    output_per_1m_usd: null
+    source_url: https://huggingface.co/docs/inference-providers/pricing
+    note: 고정 토큰 단가 없음 (컴퓨트 시간 과금). HF 응답은 토큰 수도 주지 않음
+
+embeddings: []   # 임베딩 미사용 (검색은 로컬 TF-IDF)

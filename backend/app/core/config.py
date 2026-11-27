@@ -1,11 +1,12 @@
 from functools import lru_cache
 
-from pydantic import Field
+from pydantic import Field, field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
 class Settings(BaseSettings):
-    model_config = SettingsConfigDict(env_file=".env", case_sensitive=False, extra="ignore")
+    # env_ignore_empty: .env.example 을 그대로 복사한 빈 값(AGENT_MAX_STEPS= 등)은 기본값으로
+    model_config = SettingsConfigDict(env_file=".env", case_sensitive=False, extra="ignore", env_ignore_empty=True)
 
     app_env: str = "development"
     log_level: str = "INFO"
@@ -49,6 +50,30 @@ class Settings(BaseSettings):
     # 예: "mistral,openai,anthropic" → 첫 번째 실패하면 두 번째, 그 다음 세 번째로.
     # 빈 값이면 ai_provider + 키가 설정된 나머지 프로바이더 순으로 자동 구성.
     ai_fallback_chain: str = ""
+
+    # --- 에이전트 (LangGraph + LangChain) -------------------------------------
+    # 제공사 순서는 위의 AI_PROVIDER / AI_FALLBACK_CHAIN 을 그대로 씀.
+    agent_config_path: str = "config/agents.yaml"
+    # 수준별 모델 — "제공사:모델" 을 쉼표로 이은 목록 (예: "mistral:mistral-small-latest,openai:gpt-4o-mini").
+    # 제공사 없이 이름만 쓰면 모든 제공사에 같은 이름. 비우면 AI_MODEL → 제공사 기본 모델 (전환 전과 같음).
+    agent_model_fast: str = ""
+    agent_model_balanced: str = ""
+    agent_model_top: str = ""
+    agent_max_steps: int = 8
+    agent_recursion_limit: int = 25
+    # 1: 키워드 규칙이 애매하면 LLM 으로 경로 분류 / 0: 규칙만 (전환 전과 같음 — 기본값)
+    router_llm_fallback: bool = False
+    # 라우터 LLM 분류의 전체 제한 시간(제공사 대체 포함). 넘으면 규칙 결과로 (프런트 90초 타임아웃 보호)
+    router_llm_timeout_seconds: float = 8.0
+    agent_trace_enabled: bool = True
+    llm_price_path: str = "config/llm_prices.yaml"
+    usd_krw_rate: float | None = None  # 비우면 비용(원) 은 NULL ("단가 확인 필요")
+
+    @field_validator("usd_krw_rate", mode="before")
+    @classmethod
+    def _blank_rate_is_none(cls, v):
+        # .env.example 을 그대로 복사하면 "USD_KRW_RATE=" (빈 문자열) → None 으로
+        return None if v in ("", None) else v
 
     # Detection thresholds (defaults; per-interface overrides live in DB)
     default_response_ms_threshold: int = 3000

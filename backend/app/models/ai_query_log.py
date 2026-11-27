@@ -1,8 +1,9 @@
 from __future__ import annotations
 
+import uuid
 from datetime import datetime
 
-from sqlalchemy import Boolean, DateTime, ForeignKey, Integer, String, Text, func
+from sqlalchemy import Boolean, DateTime, ForeignKey, Integer, String, Text, Uuid, func
 from sqlalchemy.orm import Mapped, mapped_column
 
 from app.core.database import Base
@@ -50,6 +51,11 @@ class AiQueryLog(Base):
     similarity_top: Mapped[float | None] = mapped_column(default=None)
     # 응답 프리뷰 (300자) — 히스토리 패널 표시용
     response_excerpt: Mapped[str | None] = mapped_column(String(600), default=None)
+
+    # 에이전트 실행 기록 연결 (agent_runs.run_id). 전환 전 행·기록 꺼짐이면 NULL
+    run_id: Mapped[uuid.UUID | None] = mapped_column(
+        Uuid, ForeignKey("agent_runs.run_id", ondelete="SET NULL"), default=None, index=True
+    )
 
     asked_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now(), index=True

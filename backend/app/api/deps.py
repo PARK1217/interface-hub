@@ -1,5 +1,4 @@
-from collections.abc import Generator
-from typing import Sequence
+from collections.abc import Generator, Sequence
 
 from fastapi import Depends, Header, HTTPException, status
 from sqlalchemy.orm import Session

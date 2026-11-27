@@ -13,7 +13,6 @@ from sqlalchemy.orm import Session
 from app.api.deps import get_db, require_role
 from app.core.time import KST, now_kst
 from app.models import CallLog, Interface, SlaTarget, User, UserRole
-from app.services.audit import record_audit
 from app.models.call_log import CallStatus
 from app.schemas.sla_target import SlaReportRow, SlaTargetCreate, SlaTargetOut, SlaTargetUpdate
 
@@ -272,7 +271,7 @@ def export_xlsx(days: int = 30, db: Session = Depends(get_db)) -> StreamingRespo
             r.uptime_pct, r.target_uptime, "O" if r.meets_uptime else "X",
             r.avg_response_ms, r.target_response_ms, "O" if r.meets_response else "X",
         ])
-    for col_letter, width in zip("ABCDEFGH", [12, 38, 12, 10, 10, 14, 12, 10]):
+    for col_letter, width in zip("ABCDEFGH", [12, 38, 12, 10, 10, 14, 12, 10], strict=False):
         ws.column_dimensions[col_letter].width = width
 
     # ---- Sheet 2: daily breakdown
@@ -290,7 +289,7 @@ def export_xlsx(days: int = 30, db: Session = Depends(get_db)) -> StreamingRespo
             c.date, c.interface_name, c.total_calls,
             c.uptime_pct, c.avg_response_ms, "O" if c.meets else "X",
         ])
-    for col_letter, width in zip("ABCDEF", [14, 38, 10, 12, 14, 10]):
+    for col_letter, width in zip("ABCDEF", [14, 38, 10, 12, 14, 10], strict=False):
         ws2.column_dimensions[col_letter].width = width
 
     buf = io.BytesIO()
