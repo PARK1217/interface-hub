@@ -62,6 +62,10 @@ def _iso(dt) -> str | None:
     return dt.isoformat() if dt else None
 
 
+def _or_dash(v, unit: str = "") -> str:
+    return "-" if v is None else f"{v}{unit}"
+
+
 def _enum(v) -> str | None:
     return v.value if hasattr(v, "value") else (str(v) if v is not None else None)
 
@@ -165,9 +169,9 @@ def get_incident_detail(incident_id: int) -> tuple[str, dict]:
         f"장애 #{d['incident_id']} · 유형 {d['type']} · 심각도 {d['severity']} · 감지 {d['detected_at']}\n"
         f"요약: {d['summary']}\n"
         f"인터페이스: {i.get('name')} ({i.get('organization')}) {i.get('protocol')} {i.get('method')} "
-        f"timeout={i.get('timeout_seconds')}s retry_max={i.get('retry_max')} "
-        f"응답임계={i.get('response_ms_threshold')}ms 실패율임계={i.get('failure_rate_threshold')} "
-        f"시크릿만료={i.get('secret_expires_at')}"
+        f"timeout={_or_dash(i.get('timeout_seconds'), 's')} retry_max={i.get('retry_max')} "
+        f"응답임계={_or_dash(i.get('response_ms_threshold'), 'ms')} 실패율임계={_or_dash(i.get('failure_rate_threshold'))} "
+        f"시크릿만료={_or_dash(i.get('secret_expires_at'))}"
     )
     return content, d
 

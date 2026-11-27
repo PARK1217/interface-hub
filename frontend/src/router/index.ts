@@ -24,6 +24,12 @@ const routes = [
     meta: { title: '감사 로그', auditorOnly: true },
   },
   {
+    path: '/agent-runs',
+    component: () => import('@/views/AgentRuns.vue'),
+    // 다른 사용자의 질문 요약이 보이므로 감사 로그와 같은 권한 (OPERATOR 차단)
+    meta: { title: '에이전트 실행 기록', auditorOnly: true },
+  },
+  {
     path: '/users',
     component: () => import('@/views/Users.vue'),
     meta: { title: '사용자 관리', adminOnly: true },

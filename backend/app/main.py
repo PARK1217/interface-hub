@@ -10,6 +10,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 
 from app.api.routes import (
+    agent_runs,
     ai,
     alert_rules,
     audit_logs,
@@ -78,6 +79,7 @@ app.include_router(performance.router, prefix="/api")
 app.include_router(audit_logs.router, prefix="/api")
 app.include_router(alert_rules.router, prefix="/api")
 app.include_router(ai.router, prefix="/api")
+app.include_router(agent_runs.router, prefix="/api")
 app.include_router(monitoring.router)  # /ws/...
 
 # 문서 (개발/기획) 정적 서빙 — 로그인 페이지에서 링크로 노출.
